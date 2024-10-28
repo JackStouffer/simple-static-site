@@ -2,12 +2,14 @@
 
 A simple, cross platform, static site generator for markdown based content.
 
-I need something that
+I need something that is
 
+* Stable. 
+    * I can't STAND coming back to a project and having to redo all of the node dependencies. I just need it TO WORK. This is just a project that MAKES HTML.
 * Takes Markdown and generates static HTML from given HTML templates
 * Cross platform
+* UTF-8 first
 * Easy to use across projects
-* Stable. I can't STAND coming back to a project and having to redo all of the node dependencies anymore. I just need it TO WORK EVERY TIME WITHOUT THINKING
 
 ### Caveats
 
@@ -23,6 +25,7 @@ In one, and only one file do
 
 ```c
 #define STATIC_SITE_IMPLEMENTATION
+#include "simple-static-site.h"
 ```
 
 ## Usage

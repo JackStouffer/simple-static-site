@@ -1,8 +1,3 @@
-#include <limits.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 /*
  * MD4C: Markdown parser for C
@@ -29,27 +24,20 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef MD4C_H
-#define MD4C_H
+#include <limits.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifndef STATIC_SITE_H
+#define STATIC_SITE_H
 
 #ifdef __cplusplus
     extern "C" {
 #endif
 
-#if defined MD4C_USE_UTF16
-    /* Magic to support UTF-16. Note that in order to use it, you have to define
-     * the macro MD4C_USE_UTF16 both when building MD4C as well as when
-     * including this header in your code. */
-    #ifdef _WIN32
-        #include <windows.h>
-        typedef WCHAR       MD_CHAR;
-    #else
-        #error MD4C_USE_UTF16 is only supported on Windows.
-    #endif
-#else
-    typedef char            MD_CHAR;
-#endif
-
+typedef uint8_t MD_CHAR;
 typedef unsigned MD_SIZE;
 typedef unsigned MD_OFFSET;
 
@@ -460,7 +448,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
     }  /* extern "C" { */
 #endif
 
-#endif  /* MD4C_H */
+#endif  /* STATIC_SITE_H */
 
 #ifdef STATIC_SITE_IMPLEMENTATION
 
@@ -504,20 +492,10 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         #endif
     #endif
 
-    /* Make the UTF-8 support the default. */
-    #if !defined MD4C_USE_ASCII && !defined MD4C_USE_UTF8 && !defined MD4C_USE_UTF16
-        #define MD4C_USE_UTF8
-    #endif
+    #define MD4C_USE_UTF8
 
-    /* Magic for making wide literals with MD4C_USE_UTF16. */
-    #ifdef _T
-        #undef _T
-    #endif
-    #if defined MD4C_USE_UTF16
-        #define _T(x)           L##x
-    #else
-        #define _T(x)           x
-    #endif
+    #undef _T
+    #define _T(x)           x
 
     /* Misc. macros. */
     #define SIZEOF_ARRAY(a)     (sizeof(a) / sizeof(a[0]))
@@ -651,11 +629,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         int n_marks;
         int alloc_marks;
 
-    #if defined MD4C_USE_UTF16
-        char mark_char_map[128];
-    #else
         char mark_char_map[256];
-    #endif
 
         /* For resolving of inline spans. */
         MD_MARKSTACK opener_stacks[16];
@@ -806,11 +780,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
     #define ISALNUM(off)                    ISALNUM_(CH(off))
 
 
-    #if defined MD4C_USE_UTF16
-        #define md_strchr wcschr
-    #else
-        #define md_strchr strchr
-    #endif
+    #define md_strchr strchr
 
 
     /* Case insensitive check of string equality. */
@@ -1001,7 +971,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
     };
 
 
-    #if defined MD4C_USE_UTF16 || defined MD4C_USE_UTF8
+    #if defined MD4C_USE_UTF8
         /* Binary search over sorted "map" of codepoints. Consecutive sequences
         * of codepoints may be encoded in the map by just using the
         * (MIN_CODEPOINT | 0x40000000) and (MAX_CODEPOINT | 0x80000000).
@@ -1285,50 +1255,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
     #endif
 
 
-    #if defined MD4C_USE_UTF16
-        #define IS_UTF16_SURROGATE_HI(word)     (((WORD)(word) & 0xfc00) == 0xd800)
-        #define IS_UTF16_SURROGATE_LO(word)     (((WORD)(word) & 0xfc00) == 0xdc00)
-        #define UTF16_DECODE_SURROGATE(hi, lo)  (0x10000 + ((((unsigned)(hi) & 0x3ff) << 10) | (((unsigned)(lo) & 0x3ff) << 0)))
-
-        static unsigned
-        md_decode_utf16le__(const CHAR* str, SZ str_size, SZ* p_size)
-        {
-            if(IS_UTF16_SURROGATE_HI(str[0])) {
-                if(1 < str_size && IS_UTF16_SURROGATE_LO(str[1])) {
-                    if(p_size != NULL)
-                        *p_size = 2;
-                    return UTF16_DECODE_SURROGATE(str[0], str[1]);
-                }
-            }
-
-            if(p_size != NULL)
-                *p_size = 1;
-            return str[0];
-        }
-
-        static unsigned
-        md_decode_utf16le_before__(MD_CTX* ctx, OFF off)
-        {
-            if(off > 2 && IS_UTF16_SURROGATE_HI(CH(off-2)) && IS_UTF16_SURROGATE_LO(CH(off-1)))
-                return UTF16_DECODE_SURROGATE(CH(off-2), CH(off-1));
-
-            return CH(off);
-        }
-
-        /* No whitespace uses surrogates, so no decoding needed here. */
-        #define ISUNICODEWHITESPACE_(codepoint) md_is_unicode_whitespace__(codepoint)
-        #define ISUNICODEWHITESPACE(off)        md_is_unicode_whitespace__(CH(off))
-        #define ISUNICODEWHITESPACEBEFORE(off)  md_is_unicode_whitespace__(CH((off)-1))
-
-        #define ISUNICODEPUNCT(off)             md_is_unicode_punct__(md_decode_utf16le__(STR(off), ctx->size - (off), NULL))
-        #define ISUNICODEPUNCTBEFORE(off)       md_is_unicode_punct__(md_decode_utf16le_before__(ctx, off))
-
-        static inline int
-        md_decode_unicode(const CHAR* str, OFF off, SZ str_size, SZ* p_char_size)
-        {
-            return md_decode_utf16le__(str+off, str_size-off, p_char_size);
-        }
-    #elif defined MD4C_USE_UTF8
+    #if defined MD4C_USE_UTF8
         #define IS_UTF8_LEAD1(byte)     ((unsigned char)(byte) <= 0x7f)
         #define IS_UTF8_LEAD2(byte)     (((unsigned char)(byte) & 0xe0) == 0xc0)
         #define IS_UTF8_LEAD3(byte)     (((unsigned char)(byte) & 0xf0) == 0xe0)
@@ -1408,29 +1335,6 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         md_decode_unicode(const CHAR* str, OFF off, SZ str_size, SZ* p_char_size)
         {
             return md_decode_utf8__(str+off, str_size-off, p_char_size);
-        }
-    #else
-        #define ISUNICODEWHITESPACE_(codepoint) ISWHITESPACE_(codepoint)
-        #define ISUNICODEWHITESPACE(off)        ISWHITESPACE(off)
-        #define ISUNICODEWHITESPACEBEFORE(off)  ISWHITESPACE((off)-1)
-
-        #define ISUNICODEPUNCT(off)             ISPUNCT(off)
-        #define ISUNICODEPUNCTBEFORE(off)       ISPUNCT((off)-1)
-
-        static inline void
-        md_get_unicode_fold_info(unsigned codepoint, MD_UNICODE_FOLD_INFO* info)
-        {
-            info->codepoints[0] = codepoint;
-            if(ISUPPER_(codepoint))
-                info->codepoints[0] += 'a' - 'A';
-            info->n_codepoints = 1;
-        }
-
-        static inline unsigned
-        md_decode_unicode(const CHAR* str, OFF off, SZ str_size, SZ* p_size)
-        {
-            *p_size = 1;
-            return (unsigned) str[off];
         }
     #endif
 
@@ -3473,14 +3377,9 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
             while(TRUE) {
                 CHAR ch;
 
-    #ifdef MD4C_USE_UTF16
-        /* For UTF-16, mark_char_map[] covers only ASCII. */
-        #define IS_MARK_CHAR(off)   ((CH(off) < SIZEOF_ARRAY(ctx->mark_char_map))  &&  \
-                                    (ctx->mark_char_map[(unsigned char) CH(off)]))
-    #else
+
         /* For 8-bit encodings, mark_char_map[] covers all 256 elements. */
         #define IS_MARK_CHAR(off)   (ctx->mark_char_map[(unsigned char) CH(off)])
-    #endif
 
                 /* Optimization: Use some loop unrolling. */
                 while(off + 3 < line->end  &&  !IS_MARK_CHAR(off+0)  &&  !IS_MARK_CHAR(off+1)
@@ -6676,7 +6575,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         * Note this is quite a bottleneck of the parsing as we here iterate almost
         * over compete document.
         */
-    #if defined __linux__ && !defined MD4C_USE_UTF16
+    #if defined __linux__
         /* Recent glibc versions have superbly optimized strcspn(), even using
         * vectorization if available. */
         if(ctx->doc_ends_with_newline  &&  off < ctx->size) {
@@ -9183,8 +9082,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
     #define HTML_ISALNUM(ch)     (HTML_ISLOWER(ch) || HTML_ISUPPER(ch) || HTML_ISDIGIT(ch))
 
 
-    static inline void
-    render_verbatim(MD_HTML* r, const MD_CHAR* text, MD_SIZE size)
+    static inline void render_verbatim(MD_HTML* r, const MD_CHAR* text, MD_SIZE size)
     {
         r->process_output(text, size, r->userdata);
     }
@@ -9607,8 +9505,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         return 0;
     }
 
-    static int
-    text_callback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
+    static int text_callback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
     {
         MD_HTML* r = (MD_HTML*) userdata;
 
