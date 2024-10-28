@@ -7,3 +7,6 @@
 *.dll
 *.bin
 *.exe
+*.out
+main
+.vscode/

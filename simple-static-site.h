@@ -452,8 +452,8 @@ typedef struct StaticSiteInstance
 
 
 StaticSiteInstance* static_site_instance();
-void static_site_add_template(StaticSiteInstance* instance, char* template_data);
-char* static_site_render_file(StaticSiteInstance* instance, char* markdown_data);
+void static_site_add_template(StaticSiteInstance* instance, uint8_t* template_data, size_t length, char* template_name);
+uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown_data, size_t length);
 
 
 #ifdef __cplusplus
@@ -9177,10 +9177,10 @@ char* static_site_render_file(StaticSiteInstance* instance, char* markdown_data)
      ***  HTML rendering helper functions  ***
     *****************************************/
 
-    #define ISDIGIT(ch)     ('0' <= (ch) && (ch) <= '9')
-    #define ISLOWER(ch)     ('a' <= (ch) && (ch) <= 'z')
-    #define ISUPPER(ch)     ('A' <= (ch) && (ch) <= 'Z')
-    #define ISALNUM(ch)     (ISLOWER(ch) || ISUPPER(ch) || ISDIGIT(ch))
+    #define HTML_ISDIGIT(ch)     ('0' <= (ch) && (ch) <= '9')
+    #define HTML_ISLOWER(ch)     ('a' <= (ch) && (ch) <= 'z')
+    #define HTML_ISUPPER(ch)     ('A' <= (ch) && (ch) <= 'Z')
+    #define HTML_ISALNUM(ch)     (HTML_ISLOWER(ch) || HTML_ISUPPER(ch) || HTML_ISDIGIT(ch))
 
 
     static inline void
@@ -9662,7 +9662,7 @@ char* static_site_render_file(StaticSiteInstance* instance, char* markdown_data)
             if(strchr("\"&<>", ch) != NULL)
                 render.escape_map[i] |= NEED_HTML_ESC_FLAG;
 
-            if(!ISALNUM(ch)  &&  strchr("~-_.+!*(),%#@?=;:/,+$", ch) == NULL)
+            if(!HTML_ISALNUM(ch)  &&  strchr("~-_.+!*(),%#@?=;:/,+$", ch) == NULL)
                 render.escape_map[i] |= NEED_URL_ESC_FLAG;
         }
 
@@ -9703,17 +9703,30 @@ char* static_site_render_file(StaticSiteInstance* instance, char* markdown_data)
 
     StaticSiteInstance* static_site_instance()
     {
-        
+        return calloc(1, sizeof(StaticSiteInstance));
     }
 
-    void static_site_add_template(StaticSiteInstance* instance, char* template_data)
+    void static_site_add_template(StaticSiteInstance* instance, uint8_t* template_data, size_t length, char* template_name)
     {
-
+        return;
     }
 
-    char* static_site_render_file(StaticSiteInstance* instance, char* markdown_data)
+    static void render_html_callback(const MD_CHAR* the_data, MD_SIZE length, void* user_data)
     {
+        printf("HTML %.*s\n", (int) length, the_data);
+    }
 
+    uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown_data, size_t length)
+    {
+        md_html(
+            (char*) markdown_data,
+            length,
+            render_html_callback,
+            NULL,
+            MD_DIALECT_GITHUB,
+            0
+        );
+        return NULL;
     }
 
 
