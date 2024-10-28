@@ -1,3 +1,5 @@
+Not ready yet
+
 # Simple Static Site Generator
 
 A simple, cross platform, static site generator for markdown based content.
