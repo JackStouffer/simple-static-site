@@ -37,7 +37,7 @@
     extern "C" {
 #endif
 
-typedef uint8_t MD_CHAR;
+typedef char MD_CHAR;
 typedef unsigned MD_SIZE;
 typedef unsigned MD_OFFSET;
 
@@ -438,11 +438,16 @@ typedef struct StaticSiteInstance
     int _x;
 } StaticSiteInstance;
 
-
-StaticSiteInstance* static_site_instance();
-void static_site_add_template(StaticSiteInstance* instance, uint8_t* template_data, size_t length, char* template_name);
-uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown_data, size_t length);
-
+/// TODO: docs
+StaticSiteInstance* sss_instance();
+/// TODO: docs
+void sss_add_template(StaticSiteInstance* instance, MD_CHAR* template_data, size_t length, MD_CHAR* template_name);
+/// TODO: docs
+MD_CHAR* sss_render_file(StaticSiteInstance* instance, MD_CHAR* markdown_data, size_t length);
+/// TODO: docs
+MD_CHAR* sss_read_file(const MD_CHAR* filename, size_t* out_size);
+/// TODO: docs
+int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
 
 #ifdef __cplusplus
     }  /* extern "C" { */
@@ -9128,8 +9133,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         }
     }
 
-    static void
-    render_url_escaped(MD_HTML* r, const MD_CHAR* data, MD_SIZE size)
+    static void render_url_escaped(MD_HTML* r, const MD_CHAR* data, MD_SIZE size)
     {
         static const MD_CHAR hex_chars[] = "0123456789ABCDEF";
         MD_OFFSET beg = 0;
@@ -9165,8 +9169,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         }
     }
 
-    static unsigned
-    hex_val(char ch)
+    static unsigned hex_val(char ch)
     {
         if('0' <= ch && ch <= '9')
             return ch - '0';
@@ -9176,8 +9179,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
             return ch - 'a' + 10;
     }
 
-    static void
-    render_utf8_codepoint(MD_HTML* r, unsigned codepoint,
+    static void render_utf8_codepoint(MD_HTML* r, unsigned codepoint,
                         void (*fn_append)(MD_HTML*, const MD_CHAR*, MD_SIZE))
     {
         static const MD_CHAR utf8_replacement_char[] = { (char)0xef, (char)0xbf, (char)0xbd };
@@ -9213,8 +9215,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
 
     /* Translate entity to its UTF-8 equivalent, or output the verbatim one
     * if such entity is unknown (or if the translation is disabled). */
-    static void
-    render_entity(MD_HTML* r, const MD_CHAR* text, MD_SIZE size,
+    static void render_entity(MD_HTML* r, const MD_CHAR* text, MD_SIZE size,
                 void (*fn_append)(MD_HTML*, const MD_CHAR*, MD_SIZE))
     {
         if(r->flags & MD_HTML_FLAG_VERBATIM_ENTITIES) {
@@ -9256,8 +9257,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         fn_append(r, text, size);
     }
 
-    static void
-    render_attribute(MD_HTML* r, const MD_ATTRIBUTE* attr,
+    static void render_attribute(MD_HTML* r, const MD_ATTRIBUTE* attr,
                     void (*fn_append)(MD_HTML*, const MD_CHAR*, MD_SIZE))
     {
         int i;
@@ -9277,8 +9277,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
     }
 
 
-    static void
-    render_open_ol_block(MD_HTML* r, const MD_BLOCK_OL_DETAIL* det)
+    static void render_open_ol_block(MD_HTML* r, const MD_BLOCK_OL_DETAIL* det)
     {
         char buf[64];
 
@@ -9291,8 +9290,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         RENDER_VERBATIM(r, buf);
     }
 
-    static void
-    render_open_li_block(MD_HTML* r, const MD_BLOCK_LI_DETAIL* det)
+    static void render_open_li_block(MD_HTML* r, const MD_BLOCK_LI_DETAIL* det)
     {
         if(det->is_task) {
             RENDER_VERBATIM(r, "<li class=\"task-list-item\">"
@@ -9305,8 +9303,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         }
     }
 
-    static void
-    render_open_code_block(MD_HTML* r, const MD_BLOCK_CODE_DETAIL* det)
+    static void render_open_code_block(MD_HTML* r, const MD_BLOCK_CODE_DETAIL* det)
     {
         RENDER_VERBATIM(r, "<pre><code");
 
@@ -9320,8 +9317,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         RENDER_VERBATIM(r, ">");
     }
 
-    static void
-    render_open_td_block(MD_HTML* r, const MD_CHAR* cell_type, const MD_BLOCK_TD_DETAIL* det)
+    static void render_open_td_block(MD_HTML* r, const MD_CHAR* cell_type, const MD_BLOCK_TD_DETAIL* det)
     {
         RENDER_VERBATIM(r, "<");
         RENDER_VERBATIM(r, cell_type);
@@ -9334,8 +9330,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         }
     }
 
-    static void
-    render_open_a_span(MD_HTML* r, const MD_SPAN_A_DETAIL* det)
+    static void render_open_a_span(MD_HTML* r, const MD_SPAN_A_DETAIL* det)
     {
         RENDER_VERBATIM(r, "<a href=\"");
         render_attribute(r, &det->href, render_url_escaped);
@@ -9348,8 +9343,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         RENDER_VERBATIM(r, "\">");
     }
 
-    static void
-    render_open_img_span(MD_HTML* r, const MD_SPAN_IMG_DETAIL* det)
+    static void render_open_img_span(MD_HTML* r, const MD_SPAN_IMG_DETAIL* det)
     {
         RENDER_VERBATIM(r, "<img src=\"");
         render_attribute(r, &det->src, render_url_escaped);
@@ -9357,8 +9351,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         RENDER_VERBATIM(r, "\" alt=\"");
     }
 
-    static void
-    render_close_img_span(MD_HTML* r, const MD_SPAN_IMG_DETAIL* det)
+    static void render_close_img_span(MD_HTML* r, const MD_SPAN_IMG_DETAIL* det)
     {
         if(det->title.text != NULL) {
             RENDER_VERBATIM(r, "\" title=\"");
@@ -9368,8 +9361,7 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         RENDER_VERBATIM(r, (r->flags & MD_HTML_FLAG_XHTML) ? "\" />" : "\">");
     }
 
-    static void
-    render_open_wikilink_span(MD_HTML* r, const MD_SPAN_WIKILINK_DETAIL* det)
+    static void render_open_wikilink_span(MD_HTML* r, const MD_SPAN_WIKILINK_DETAIL* det)
     {
         RENDER_VERBATIM(r, "<x-wikilink data-target=\"");
         render_attribute(r, &det->target, render_html_escaped);
@@ -9524,16 +9516,14 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
         return 0;
     }
 
-    static void
-    debug_log_callback(const char* msg, void* userdata)
+    static void debug_log_callback(const char* msg, void* userdata)
     {
         MD_HTML* r = (MD_HTML*) userdata;
         if(r->flags & MD_HTML_FLAG_DEBUG)
             fprintf(stderr, "MD4C: %s\n", msg);
     }
 
-    int
-    md_html(const MD_CHAR* input, MD_SIZE input_size,
+    int md_html(const MD_CHAR* input, MD_SIZE input_size,
             void (*process_output)(const MD_CHAR*, MD_SIZE, void*),
             void* userdata, unsigned parser_flags, unsigned renderer_flags)
     {
@@ -9598,31 +9588,119 @@ uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown
      * IN THE SOFTWARE.
      */
 
-    StaticSiteInstance* static_site_instance()
+    MD_CHAR* sss_read_file(const MD_CHAR* filename, size_t* out_size)
+    {
+        FILE* file = fopen(filename, "rb");
+        if (!file)
+        {
+            perror("Failed to open file");
+            return NULL;
+        }
+
+        if (fseek(file, 0, SEEK_END) != 0)
+        {
+            fclose(file);
+            return NULL;
+        }
+
+        long file_size = ftell(file);
+        if (file_size < 0)
+        {
+            fclose(file);
+            return NULL;
+        }
+        rewind(file);
+
+        MD_CHAR* buffer = malloc(file_size + 1);
+        size_t bytes_read = fread(buffer, sizeof(MD_CHAR), file_size, file);
+        if (bytes_read != file_size)
+        {
+            fclose(file);
+            return NULL;
+        }
+
+        buffer[file_size] = '\0';
+        fclose(file);
+
+        if (out_size != NULL)
+        {
+            *out_size = file_size;
+        }
+
+        return buffer;
+    }
+
+    int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length)
+    {
+        // Open the file for writing in binary mode
+        FILE *file = fopen(filename, "wb");
+        if (!file) {
+            perror("Failed to open file");
+            return -1;
+        }
+
+        // Write the buffer to the file
+        size_t written = fwrite(buffer, 1, length, file);
+        if (written != length) {
+            perror("Failed to write the entire buffer to the file");
+            fclose(file);
+            return -1;
+        }
+
+        // Close the file
+        if (fclose(file) != 0) {
+            perror("Failed to close the file");
+            return -1;
+        }
+
+        return 0; // Success
+    }
+
+    StaticSiteInstance* sss_instance()
     {
         return calloc(1, sizeof(StaticSiteInstance));
     }
 
-    void static_site_add_template(StaticSiteInstance* instance, uint8_t* template_data, size_t length, char* template_name)
+    void sss_add_template(StaticSiteInstance* instance, MD_CHAR* template_data, size_t length, MD_CHAR* template_name)
     {
         return;
     }
 
-    static void render_html_callback(const MD_CHAR* the_data, MD_SIZE length, void* user_data)
+    static char* strcat_len(char* destination, const char* src, size_t src_len)
     {
-        printf("HTML %.*s\n", (int) length, the_data);
+        size_t dest_len = strlen(destination);
+
+        char* new_buffer = malloc((dest_len + src_len + 1) * sizeof(MD_CHAR));
+
+        memcpy(new_buffer, destination, dest_len);
+        memcpy(new_buffer + dest_len, src, src_len);
+        new_buffer[dest_len + src_len] = '\0';
+
+        return new_buffer;
     }
 
-    uint8_t* static_site_render_file(StaticSiteInstance* instance, uint8_t* markdown_data, size_t length)
+    static void render_html_callback(const MD_CHAR* the_data, MD_SIZE length, void* user_data)
     {
+        // printf("HTML %.*s\n", (int) length, the_data);
+
+        char** html_results_ptr = (char**) user_data;
+        char* html_results = *(html_results_ptr);
+        *html_results_ptr = strcat_len(html_results, the_data, length);
+    }
+
+    MD_CHAR* sss_render_file(StaticSiteInstance* instance, MD_CHAR* markdown_data, size_t length)
+    {
+        char* html_results = "";
+
         md_html(
             (char*) markdown_data,
             length,
             render_html_callback,
-            NULL,
+            &html_results,
             MD_DIALECT_GITHUB,
             0
         );
+        printf("HTML %s\n", html_results);
         return NULL;
     }
 
