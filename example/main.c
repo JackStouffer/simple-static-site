@@ -15,8 +15,7 @@ int main()
         char* mark_down_data = sss_read_file("content/home.md", &mark_down_size);
 
         char* html = sss_render_file(instance, mark_down_data, mark_down_size);
-
-        if (html != NULL)
-            sss_write_to_file("build/home.html", html, 0);
+        printf("HTML %s\n", html);
+        sss_write_to_file("build/home.html", html);
     }
 }

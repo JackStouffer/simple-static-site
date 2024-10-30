@@ -381,20 +381,6 @@ typedef struct MD_PARSER {
  */
 typedef MD_PARSER MD_RENDERER;
 
-
-/* Parse the Markdown document stored in the string 'text' of size 'size'.
- * The parser provides callbacks to be called during the parsing so the
- * caller can render the document on the screen or convert the Markdown
- * to another format.
- *
- * Zero is returned on success. If a runtime error occurs (e.g. a memory
- * fails), -1 is returned. If the processing is aborted due any callback
- * returning non-zero, the return value of the callback is returned.
- */
-int md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userdata);
-
-
-
 /* Most entities are formed by single Unicode codepoint, few by two codepoints.
  * Single-codepoint entities have codepoints[1] set to zero. */
 typedef struct ENTITY_tag ENTITY;
@@ -405,32 +391,11 @@ struct ENTITY_tag {
 
 const ENTITY* entity_lookup(const char* name, size_t name_size);
 
-
 /* If set, debug output from md_parse() is sent to stderr. */
 #define MD_HTML_FLAG_DEBUG                  0x0001
 #define MD_HTML_FLAG_VERBATIM_ENTITIES      0x0002
 #define MD_HTML_FLAG_SKIP_UTF8_BOM          0x0004
 #define MD_HTML_FLAG_XHTML                  0x0008
-
-/* Render Markdown into HTML.
- *
- * Note only contents of <body> tag is generated. Caller must generate
- * HTML header/footer manually before/after calling md_html().
- *
- * Params input and input_size specify the Markdown input.
- * Callback process_output() gets called with chunks of HTML output.
- * (Typical implementation may just output the bytes to a file or append to
- * some buffer).
- * Param userdata is just propagated back to process_output() callback.
- * Param parser_flags are flags from md4c.h propagated to md_parse().
- * Param render_flags is bitmask of MD_HTML_FLAG_xxxx.
- *
- * Returns -1 on error (if md_parse() fails.)
- * Returns 0 on success.
- */
-int md_html(const MD_CHAR* input, MD_SIZE input_size,
-            void (*process_output)(const MD_CHAR*, MD_SIZE, void*),
-            void* userdata, unsigned parser_flags, unsigned renderer_flags);
 
 
 typedef struct StaticSiteInstance
@@ -447,7 +412,7 @@ MD_CHAR* sss_render_file(StaticSiteInstance* instance, MD_CHAR* markdown_data, s
 /// TODO: docs
 MD_CHAR* sss_read_file(const MD_CHAR* filename, size_t* out_size);
 /// TODO: docs
-int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
+int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
 #ifdef __cplusplus
     }  /* extern "C" { */
@@ -6744,8 +6709,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
         return ret;
     }
 
-    static int
-    md_process_doc(MD_CTX *ctx)
+    static int md_process_doc(MD_CTX *ctx)
     {
         const MD_LINE_ANALYSIS* pivot_line = &md_dummy_blank_line;
         MD_LINE_ANALYSIS line_buf[2];
@@ -6774,39 +6738,20 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
         MD_LEAVE_BLOCK(MD_BLOCK_DOC, NULL);
 
     abort:
-
-    #if 0
-        /* Output some memory consumption statistics. */
-        {
-            char buffer[256];
-            sprintf(buffer, "Alloced %u bytes for block buffer.",
-                        (unsigned)(ctx->alloc_block_bytes));
-            MD_LOG(buffer);
-
-            sprintf(buffer, "Alloced %u bytes for containers buffer.",
-                        (unsigned)(ctx->alloc_containers * sizeof(MD_CONTAINER)));
-            MD_LOG(buffer);
-
-            sprintf(buffer, "Alloced %u bytes for marks buffer.",
-                        (unsigned)(ctx->alloc_marks * sizeof(MD_MARK)));
-            MD_LOG(buffer);
-
-            sprintf(buffer, "Alloced %u bytes for aux. buffer.",
-                        (unsigned)(ctx->alloc_buffer * sizeof(MD_CHAR)));
-            MD_LOG(buffer);
-        }
-    #endif
-
         return ret;
     }
 
-
-    /********************
-     ***  Public API  ***
-    ********************/
-
-    int
-    md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userdata)
+    /**
+    * Parse the Markdown document stored in the string 'text' of size 'size'.
+    * The parser provides callbacks to be called during the parsing so the
+    * caller can render the document on the screen or convert the Markdown
+    * to another format.
+    *
+    * Zero is returned on success. If a runtime error occurs (e.g. a memory
+    * fails), -1 is returned. If the processing is aborted due any callback
+    * returning non-zero, the return value of the callback is returned.
+    */
+    static int md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userdata)
     {
         MD_CTX ctx;
         int i;
@@ -9523,6 +9468,22 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
             fprintf(stderr, "MD4C: %s\n", msg);
     }
 
+    /* Render Markdown into HTML.
+    *
+    * Note only contents of <body> tag is generated. Caller must generate
+    * HTML header/footer manually before/after calling md_html().
+    *
+    * Params input and input_size specify the Markdown input.
+    * Callback process_output() gets called with chunks of HTML output.
+    * (Typical implementation may just output the bytes to a file or append to
+    * some buffer).
+    * Param userdata is just propagated back to process_output() callback.
+    * Param parser_flags are flags from md4c.h propagated to md_parse().
+    * Param render_flags is bitmask of MD_HTML_FLAG_xxxx.
+    *
+    * Returns -1 on error (if md_parse() fails.)
+    * Returns 0 on success.
+    */
     int md_html(const MD_CHAR* input, MD_SIZE input_size,
             void (*process_output)(const MD_CHAR*, MD_SIZE, void*),
             void* userdata, unsigned parser_flags, unsigned renderer_flags)
@@ -9630,8 +9591,10 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
         return buffer;
     }
 
-    int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length)
+    int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr)
     {
+        MD_SIZE length = strlen(cstr);
+
         // Open the file for writing in binary mode
         FILE *file = fopen(filename, "wb");
         if (!file) {
@@ -9640,7 +9603,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
         }
 
         // Write the buffer to the file
-        size_t written = fwrite(buffer, 1, length, file);
+        size_t written = fwrite(cstr, 1, length, file);
         if (written != length) {
             perror("Failed to write the entire buffer to the file");
             fclose(file);
@@ -9666,42 +9629,71 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* buffer, size_t length);
         return;
     }
 
-    static char* strcat_len(char* destination, const char* src, size_t src_len)
+    struct SSS__DynamicString
     {
-        size_t dest_len = strlen(destination);
+        MD_CHAR* data;
+        MD_SIZE length;
+        MD_SIZE capacity;
+    };
 
-        char* new_buffer = malloc((dest_len + src_len + 1) * sizeof(MD_CHAR));
+    static void sss__dynamic_string_init(struct SSS__DynamicString* arr)
+    {
+        arr->data = malloc(sizeof(MD_CHAR) * 1024);
+        arr->length = 0;
+        arr->capacity = 1024;
+    }
 
-        memcpy(new_buffer, destination, dest_len);
-        memcpy(new_buffer + dest_len, src, src_len);
-        new_buffer[dest_len + src_len] = '\0';
+    static MD_SIZE next_power_of_two(MD_SIZE x)
+    {
+        x--;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        x++;
+        return x;
+    }
 
-        return new_buffer;
+    static void sss__dynamic_string_append(struct SSS__DynamicString* arr, const MD_CHAR* str, MD_SIZE length)
+    {
+        MD_SIZE required_capacity = arr->length + length;
+        if (arr->capacity < required_capacity)
+        {
+            MD_SIZE new_capacity = next_power_of_two(required_capacity);
+            arr->data = realloc(arr->data, new_capacity);
+            arr->capacity = new_capacity;
+        }
+
+        memcpy(arr->data + arr->length, str, length);
+        arr->length += length;
     }
 
     static void render_html_callback(const MD_CHAR* the_data, MD_SIZE length, void* user_data)
     {
         // printf("HTML %.*s\n", (int) length, the_data);
 
-        char** html_results_ptr = (char**) user_data;
-        char* html_results = *(html_results_ptr);
-        *html_results_ptr = strcat_len(html_results, the_data, length);
+        struct SSS__DynamicString* result_buffer = user_data;
+        sss__dynamic_string_append(result_buffer, the_data, length);
     }
 
     MD_CHAR* sss_render_file(StaticSiteInstance* instance, MD_CHAR* markdown_data, size_t length)
     {
-        char* html_results = "";
+        struct SSS__DynamicString result_buffer = {0};
+        sss__dynamic_string_init(&result_buffer);
 
         md_html(
             (char*) markdown_data,
             length,
             render_html_callback,
-            &html_results,
+            &result_buffer,
             MD_DIALECT_GITHUB,
             0
         );
-        printf("HTML %s\n", html_results);
-        return NULL;
+
+        sss__dynamic_string_append(&result_buffer, "\0", 1);
+
+        return result_buffer.data;
     }
 
 
