@@ -36,367 +36,10 @@
 #ifdef __cplusplus
     extern "C" {
 #endif
-
-typedef char MD_CHAR;
-typedef unsigned MD_SIZE;
-typedef unsigned MD_OFFSET;
-
-
-/* Block represents a part of document hierarchy structure like a paragraph
- * or list item.
- */
-typedef enum MD_BLOCKTYPE {
-    /* <body>...</body> */
-    MD_BLOCK_DOC = 0,
-
-    /* <blockquote>...</blockquote> */
-    MD_BLOCK_QUOTE,
-
-    /* <ul>...</ul>
-     * Detail: Structure MD_BLOCK_UL_DETAIL. */
-    MD_BLOCK_UL,
-
-    /* <ol>...</ol>
-     * Detail: Structure MD_BLOCK_OL_DETAIL. */
-    MD_BLOCK_OL,
-
-    /* <li>...</li>
-     * Detail: Structure MD_BLOCK_LI_DETAIL. */
-    MD_BLOCK_LI,
-
-    /* <hr> */
-    MD_BLOCK_HR,
-
-    /* <h1>...</h1> (for levels up to 6)
-     * Detail: Structure MD_BLOCK_H_DETAIL. */
-    MD_BLOCK_H,
-
-    /* <pre><code>...</code></pre>
-     * Note the text lines within code blocks are terminated with '\n'
-     * instead of explicit MD_TEXT_BR. */
-    MD_BLOCK_CODE,
-
-    /* Raw HTML block. This itself does not correspond to any particular HTML
-     * tag. The contents of it _is_ raw HTML source intended to be put
-     * in verbatim form to the HTML output. */
-    MD_BLOCK_HTML,
-
-    /* <p>...</p> */
-    MD_BLOCK_P,
-
-    /* <table>...</table> and its contents.
-     * Detail: Structure MD_BLOCK_TABLE_DETAIL (for MD_BLOCK_TABLE),
-     *         structure MD_BLOCK_TD_DETAIL (for MD_BLOCK_TH and MD_BLOCK_TD)
-     * Note all of these are used only if extension MD_FLAG_TABLES is enabled. */
-    MD_BLOCK_TABLE,
-    MD_BLOCK_THEAD,
-    MD_BLOCK_TBODY,
-    MD_BLOCK_TR,
-    MD_BLOCK_TH,
-    MD_BLOCK_TD
-} MD_BLOCKTYPE;
-
-/* Span represents an in-line piece of a document which should be rendered with
- * the same font, color and other attributes. A sequence of spans forms a block
- * like paragraph or list item. */
-typedef enum MD_SPANTYPE {
-    /* <em>...</em> */
-    MD_SPAN_EM,
-
-    /* <strong>...</strong> */
-    MD_SPAN_STRONG,
-
-    /* <a href="xxx">...</a>
-     * Detail: Structure MD_SPAN_A_DETAIL. */
-    MD_SPAN_A,
-
-    /* <img src="xxx">...</a>
-     * Detail: Structure MD_SPAN_IMG_DETAIL.
-     * Note: Image text can contain nested spans and even nested images.
-     * If rendered into ALT attribute of HTML <IMG> tag, it's responsibility
-     * of the parser to deal with it.
-     */
-    MD_SPAN_IMG,
-
-    /* <code>...</code> */
-    MD_SPAN_CODE,
-
-    /* <del>...</del>
-     * Note: Recognized only when MD_FLAG_STRIKETHROUGH is enabled.
-     */
-    MD_SPAN_DEL,
-
-    /* For recognizing inline ($) and display ($$) equations
-     * Note: Recognized only when MD_FLAG_LATEXMATHSPANS is enabled.
-     */
-    MD_SPAN_LATEXMATH,
-    MD_SPAN_LATEXMATH_DISPLAY,
-
-    /* Wiki links
-     * Note: Recognized only when MD_FLAG_WIKILINKS is enabled.
-     */
-    MD_SPAN_WIKILINK,
-
-    /* <u>...</u>
-     * Note: Recognized only when MD_FLAG_UNDERLINE is enabled. */
-    MD_SPAN_U
-} MD_SPANTYPE;
-
-/* Text is the actual textual contents of span. */
-typedef enum MD_TEXTTYPE {
-    /* Normal text. */
-    MD_TEXT_NORMAL = 0,
-
-    /* NULL character. CommonMark requires replacing NULL character with
-     * the replacement char U+FFFD, so this allows caller to do that easily. */
-    MD_TEXT_NULLCHAR,
-
-    /* Line breaks.
-     * Note these are not sent from blocks with verbatim output (MD_BLOCK_CODE
-     * or MD_BLOCK_HTML). In such cases, '\n' is part of the text itself. */
-    MD_TEXT_BR,         /* <br> (hard break) */
-    MD_TEXT_SOFTBR,     /* '\n' in source text where it is not semantically meaningful (soft break) */
-
-    /* Entity.
-     * (a) Named entity, e.g. &nbsp; 
-     *     (Note MD4C does not have a list of known entities.
-     *     Anything matching the regexp /&[A-Za-z][A-Za-z0-9]{1,47};/ is
-     *     treated as a named entity.)
-     * (b) Numerical entity, e.g. &#1234;
-     * (c) Hexadecimal entity, e.g. &#x12AB;
-     *
-     * As MD4C is mostly encoding agnostic, application gets the verbatim
-     * entity text into the MD_PARSER::text_callback(). */
-    MD_TEXT_ENTITY,
-
-    /* Text in a code block (inside MD_BLOCK_CODE) or inlined code (`code`).
-     * If it is inside MD_BLOCK_CODE, it includes spaces for indentation and
-     * '\n' for new lines. MD_TEXT_BR and MD_TEXT_SOFTBR are not sent for this
-     * kind of text. */
-    MD_TEXT_CODE,
-
-    /* Text is a raw HTML. If it is contents of a raw HTML block (i.e. not
-     * an inline raw HTML), then MD_TEXT_BR and MD_TEXT_SOFTBR are not used.
-     * The text contains verbatim '\n' for the new lines. */
-    MD_TEXT_HTML,
-
-    /* Text is inside an equation. This is processed the same way as inlined code
-     * spans (`code`). */
-    MD_TEXT_LATEXMATH
-} MD_TEXTTYPE;
-
-
-/* Alignment enumeration. */
-typedef enum MD_ALIGN {
-    MD_ALIGN_DEFAULT = 0,   /* When unspecified. */
-    MD_ALIGN_LEFT,
-    MD_ALIGN_CENTER,
-    MD_ALIGN_RIGHT
-} MD_ALIGN;
-
-
-/* String attribute.
- *
- * This wraps strings which are outside of a normal text flow and which are
- * propagated within various detailed structures, but which still may contain
- * string portions of different types like e.g. entities.
- *
- * So, for example, lets consider this image:
- *
- *     ![image alt text](http://example.org/image.png 'foo &quot; bar')
- *
- * The image alt text is propagated as a normal text via the MD_PARSER::text()
- * callback. However, the image title ('foo &quot; bar') is propagated as
- * MD_ATTRIBUTE in MD_SPAN_IMG_DETAIL::title.
- *
- * Then the attribute MD_SPAN_IMG_DETAIL::title shall provide the following:
- *  -- [0]: "foo "   (substr_types[0] == MD_TEXT_NORMAL; substr_offsets[0] == 0)
- *  -- [1]: "&quot;" (substr_types[1] == MD_TEXT_ENTITY; substr_offsets[1] == 4)
- *  -- [2]: " bar"   (substr_types[2] == MD_TEXT_NORMAL; substr_offsets[2] == 10)
- *  -- [3]: (n/a)    (n/a                              ; substr_offsets[3] == 14)
- *
- * Note that these invariants are always guaranteed:
- *  -- substr_offsets[0] == 0
- *  -- substr_offsets[LAST+1] == size
- *  -- Currently, only MD_TEXT_NORMAL, MD_TEXT_ENTITY, MD_TEXT_NULLCHAR
- *     substrings can appear. This could change only of the specification
- *     changes.
- */
-typedef struct MD_ATTRIBUTE {
-    const MD_CHAR* text;
-    MD_SIZE size;
-    const MD_TEXTTYPE* substr_types;
-    const MD_OFFSET* substr_offsets;
-} MD_ATTRIBUTE;
-
-
-/* Detailed info for MD_BLOCK_UL. */
-typedef struct MD_BLOCK_UL_DETAIL {
-    int is_tight;           /* Non-zero if tight list, zero if loose. */
-    MD_CHAR mark;           /* Item bullet character in MarkDown source of the list, e.g. '-', '+', '*'. */
-} MD_BLOCK_UL_DETAIL;
-
-/* Detailed info for MD_BLOCK_OL. */
-typedef struct MD_BLOCK_OL_DETAIL {
-    unsigned start;         /* Start index of the ordered list. */
-    int is_tight;           /* Non-zero if tight list, zero if loose. */
-    MD_CHAR mark_delimiter; /* Character delimiting the item marks in MarkDown source, e.g. '.' or ')' */
-} MD_BLOCK_OL_DETAIL;
-
-/* Detailed info for MD_BLOCK_LI. */
-typedef struct MD_BLOCK_LI_DETAIL {
-    int is_task;            /* Can be non-zero only with MD_FLAG_TASKLISTS */
-    MD_CHAR task_mark;      /* If is_task, then one of 'x', 'X' or ' '. Undefined otherwise. */
-    MD_OFFSET task_mark_offset;  /* If is_task, then offset in the input of the char between '[' and ']'. */
-} MD_BLOCK_LI_DETAIL;
-
-/* Detailed info for MD_BLOCK_H. */
-typedef struct MD_BLOCK_H_DETAIL {
-    unsigned level;         /* Header level (1 - 6) */
-} MD_BLOCK_H_DETAIL;
-
-/* Detailed info for MD_BLOCK_CODE. */
-typedef struct MD_BLOCK_CODE_DETAIL {
-    MD_ATTRIBUTE info;
-    MD_ATTRIBUTE lang;
-    MD_CHAR fence_char;     /* The character used for fenced code block; or zero for indented code block. */
-} MD_BLOCK_CODE_DETAIL;
-
-/* Detailed info for MD_BLOCK_TABLE. */
-typedef struct MD_BLOCK_TABLE_DETAIL {
-    unsigned col_count;         /* Count of columns in the table. */
-    unsigned head_row_count;    /* Count of rows in the table header (currently always 1) */
-    unsigned body_row_count;    /* Count of rows in the table body */
-} MD_BLOCK_TABLE_DETAIL;
-
-/* Detailed info for MD_BLOCK_TH and MD_BLOCK_TD. */
-typedef struct MD_BLOCK_TD_DETAIL {
-    MD_ALIGN align;
-} MD_BLOCK_TD_DETAIL;
-
-/* Detailed info for MD_SPAN_A. */
-typedef struct MD_SPAN_A_DETAIL {
-    MD_ATTRIBUTE href;
-    MD_ATTRIBUTE title;
-    int is_autolink;            /* nonzero if this is an autolink */
-} MD_SPAN_A_DETAIL;
-
-/* Detailed info for MD_SPAN_IMG. */
-typedef struct MD_SPAN_IMG_DETAIL {
-    MD_ATTRIBUTE src;
-    MD_ATTRIBUTE title;
-} MD_SPAN_IMG_DETAIL;
-
-/* Detailed info for MD_SPAN_WIKILINK. */
-typedef struct MD_SPAN_WIKILINK {
-    MD_ATTRIBUTE target;
-} MD_SPAN_WIKILINK_DETAIL;
-
-/* Flags specifying extensions/deviations from CommonMark specification.
- *
- * By default (when MD_PARSER::flags == 0), we follow CommonMark specification.
- * The following flags may allow some extensions or deviations from it.
- */
-#define MD_FLAG_COLLAPSEWHITESPACE          0x0001  /* In MD_TEXT_NORMAL, collapse non-trivial whitespace into single ' ' */
-#define MD_FLAG_PERMISSIVEATXHEADERS        0x0002  /* Do not require space in ATX headers ( ###header ) */
-#define MD_FLAG_PERMISSIVEURLAUTOLINKS      0x0004  /* Recognize URLs as autolinks even without '<', '>' */
-#define MD_FLAG_PERMISSIVEEMAILAUTOLINKS    0x0008  /* Recognize e-mails as autolinks even without '<', '>' and 'mailto:' */
-#define MD_FLAG_NOINDENTEDCODEBLOCKS        0x0010  /* Disable indented code blocks. (Only fenced code works.) */
-#define MD_FLAG_NOHTMLBLOCKS                0x0020  /* Disable raw HTML blocks. */
-#define MD_FLAG_NOHTMLSPANS                 0x0040  /* Disable raw HTML (inline). */
-#define MD_FLAG_TABLES                      0x0100  /* Enable tables extension. */
-#define MD_FLAG_STRIKETHROUGH               0x0200  /* Enable strikethrough extension. */
-#define MD_FLAG_PERMISSIVEWWWAUTOLINKS      0x0400  /* Enable WWW autolinks (even without any scheme prefix, if they begin with 'www.') */
-#define MD_FLAG_TASKLISTS                   0x0800  /* Enable task list extension. */
-#define MD_FLAG_LATEXMATHSPANS              0x1000  /* Enable $ and $$ containing LaTeX equations. */
-#define MD_FLAG_WIKILINKS                   0x2000  /* Enable wiki links extension. */
-#define MD_FLAG_UNDERLINE                   0x4000  /* Enable underline extension (and disables '_' for normal emphasis). */
-#define MD_FLAG_HARD_SOFT_BREAKS            0x8000  /* Force all soft breaks to act as hard breaks. */
-
-#define MD_FLAG_PERMISSIVEAUTOLINKS         (MD_FLAG_PERMISSIVEEMAILAUTOLINKS | MD_FLAG_PERMISSIVEURLAUTOLINKS | MD_FLAG_PERMISSIVEWWWAUTOLINKS)
-#define MD_FLAG_NOHTML                      (MD_FLAG_NOHTMLBLOCKS | MD_FLAG_NOHTMLSPANS)
-
-/* Convenient sets of flags corresponding to well-known Markdown dialects.
- *
- * Note we may only support subset of features of the referred dialect.
- * The constant just enables those extensions which bring us as close as
- * possible given what features we implement.
- *
- * ABI compatibility note: Meaning of these can change in time as new
- * extensions, bringing the dialect closer to the original, are implemented.
- */
-#define MD_DIALECT_COMMONMARK               0
-#define MD_DIALECT_GITHUB                   (MD_FLAG_PERMISSIVEAUTOLINKS | MD_FLAG_TABLES | MD_FLAG_STRIKETHROUGH | MD_FLAG_TASKLISTS)
-
-/* Parser structure.
- */
-typedef struct MD_PARSER {
-    /* Reserved. Set to zero.
-     */
-    unsigned abi_version;
-
-    /* Dialect options. Bitmask of MD_FLAG_xxxx values.
-     */
-    unsigned flags;
-
-    /* Caller-provided rendering callbacks.
-     *
-     * For some block/span types, more detailed information is provided in a
-     * type-specific structure pointed by the argument 'detail'.
-     *
-     * The last argument of all callbacks, 'userdata', is just propagated from
-     * md_parse() and is available for any use by the application.
-     *
-     * Note any strings provided to the callbacks as their arguments or as
-     * members of any detail structure are generally not zero-terminated.
-     * Application has to take the respective size information into account.
-     *
-     * Any rendering callback may abort further parsing of the document by
-     * returning non-zero.
-     */
-    int (*enter_block)(MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
-    int (*leave_block)(MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
-
-    int (*enter_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
-    int (*leave_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
-
-    int (*text)(MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_SIZE /*size*/, void* /*userdata*/);
-
-    /* Debug callback. Optional (may be NULL).
-     *
-     * If provided and something goes wrong, this function gets called.
-     * This is intended for debugging and problem diagnosis for developers;
-     * it is not intended to provide any errors suitable for displaying to an
-     * end user.
-     */
-    void (*debug_log)(const char* /*msg*/, void* /*userdata*/);
-
-    /* Reserved. Set to NULL.
-     */
-    void (*syntax)(void);
-} MD_PARSER;
-
-
-/* For backward compatibility. Do not use in new code.
- */
-typedef MD_PARSER MD_RENDERER;
-
-/* Most entities are formed by single Unicode codepoint, few by two codepoints.
- * Single-codepoint entities have codepoints[1] set to zero. */
-typedef struct ENTITY_tag ENTITY;
-struct ENTITY_tag {
-    const char* name;
-    unsigned codepoints[2];
-};
-
-const ENTITY* entity_lookup(const char* name, size_t name_size);
-
-/* If set, debug output from md_parse() is sent to stderr. */
-#define MD_HTML_FLAG_DEBUG                  0x0001
-#define MD_HTML_FLAG_VERBATIM_ENTITIES      0x0002
-#define MD_HTML_FLAG_SKIP_UTF8_BOM          0x0004
-#define MD_HTML_FLAG_XHTML                  0x0008
-
+   
+typedef char SSS_CHAR;
+typedef unsigned SSS_SIZE;
+typedef unsigned SSS_OFFSET;
 
 typedef struct StaticSiteInstance
 {
@@ -406,17 +49,14 @@ typedef struct StaticSiteInstance
 /// TODO: docs
 StaticSiteInstance* sss_instance();
 /// TODO: docs
-void sss_add_template(StaticSiteInstance* instance, MD_CHAR* template_data, size_t length, MD_CHAR* template_name);
+void sss_add_template(StaticSiteInstance* instance, SSS_CHAR* template_data, size_t length, SSS_CHAR* template_name);
 /// TODO: docs
-MD_CHAR* sss_render_file(StaticSiteInstance* instance, MD_CHAR* markdown_data, size_t length);
-/// TODO: docs
-MD_CHAR* sss_read_file(const MD_CHAR* filename, size_t* out_size);
-/// TODO: docs
-int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
+SSS_CHAR* sss_render_file(StaticSiteInstance* instance, SSS_CHAR* markdown_data, size_t length);
 
-#ifdef __cplusplus
-    }  /* extern "C" { */
-#endif
+/// TODO: docs
+SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size);
+/// TODO: docs
+int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
 
 #endif  /* STATIC_SITE_H */
 
@@ -446,6 +86,363 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
     * IN THE SOFTWARE.
     */
+
+    /* Block represents a part of document hierarchy structure like a paragraph
+    * or list item.
+    */
+    typedef enum MD_BLOCKTYPE {
+        /* <body>...</body> */
+        MD_BLOCK_DOC = 0,
+
+        /* <blockquote>...</blockquote> */
+        MD_BLOCK_QUOTE,
+
+        /* <ul>...</ul>
+        * Detail: Structure MD_BLOCK_UL_DETAIL. */
+        MD_BLOCK_UL,
+
+        /* <ol>...</ol>
+        * Detail: Structure MD_BLOCK_OL_DETAIL. */
+        MD_BLOCK_OL,
+
+        /* <li>...</li>
+        * Detail: Structure MD_BLOCK_LI_DETAIL. */
+        MD_BLOCK_LI,
+
+        /* <hr> */
+        MD_BLOCK_HR,
+
+        /* <h1>...</h1> (for levels up to 6)
+        * Detail: Structure MD_BLOCK_H_DETAIL. */
+        MD_BLOCK_H,
+
+        /* <pre><code>...</code></pre>
+        * Note the text lines within code blocks are terminated with '\n'
+        * instead of explicit MD_TEXT_BR. */
+        MD_BLOCK_CODE,
+
+        /* Raw HTML block. This itself does not correspond to any particular HTML
+        * tag. The contents of it _is_ raw HTML source intended to be put
+        * in verbatim form to the HTML output. */
+        MD_BLOCK_HTML,
+
+        /* <p>...</p> */
+        MD_BLOCK_P,
+
+        /* <table>...</table> and its contents.
+        * Detail: Structure MD_BLOCK_TABLE_DETAIL (for MD_BLOCK_TABLE),
+        *         structure MD_BLOCK_TD_DETAIL (for MD_BLOCK_TH and MD_BLOCK_TD)
+        * Note all of these are used only if extension MD_FLAG_TABLES is enabled. */
+        MD_BLOCK_TABLE,
+        MD_BLOCK_THEAD,
+        MD_BLOCK_TBODY,
+        MD_BLOCK_TR,
+        MD_BLOCK_TH,
+        MD_BLOCK_TD
+    } MD_BLOCKTYPE;
+
+    /* Span represents an in-line piece of a document which should be rendered with
+    * the same font, color and other attributes. A sequence of spans forms a block
+    * like paragraph or list item. */
+    typedef enum MD_SPANTYPE {
+        /* <em>...</em> */
+        MD_SPAN_EM,
+
+        /* <strong>...</strong> */
+        MD_SPAN_STRONG,
+
+        /* <a href="xxx">...</a>
+        * Detail: Structure MD_SPAN_A_DETAIL. */
+        MD_SPAN_A,
+
+        /* <img src="xxx">...</a>
+        * Detail: Structure MD_SPAN_IMG_DETAIL.
+        * Note: Image text can contain nested spans and even nested images.
+        * If rendered into ALT attribute of HTML <IMG> tag, it's responsibility
+        * of the parser to deal with it.
+        */
+        MD_SPAN_IMG,
+
+        /* <code>...</code> */
+        MD_SPAN_CODE,
+
+        /* <del>...</del>
+        * Note: Recognized only when MD_FLAG_STRIKETHROUGH is enabled.
+        */
+        MD_SPAN_DEL,
+
+        /* For recognizing inline ($) and display ($$) equations
+        * Note: Recognized only when MD_FLAG_LATEXMATHSPANS is enabled.
+        */
+        MD_SPAN_LATEXMATH,
+        MD_SPAN_LATEXMATH_DISPLAY,
+
+        /* Wiki links
+        * Note: Recognized only when MD_FLAG_WIKILINKS is enabled.
+        */
+        MD_SPAN_WIKILINK,
+
+        /* <u>...</u>
+        * Note: Recognized only when MD_FLAG_UNDERLINE is enabled. */
+        MD_SPAN_U
+    } MD_SPANTYPE;
+
+    /* Text is the actual textual contents of span. */
+    typedef enum MD_TEXTTYPE {
+        /* Normal text. */
+        MD_TEXT_NORMAL = 0,
+
+        /* NULL character. CommonMark requires replacing NULL character with
+        * the replacement char U+FFFD, so this allows caller to do that easily. */
+        MD_TEXT_NULLCHAR,
+
+        /* Line breaks.
+        * Note these are not sent from blocks with verbatim output (MD_BLOCK_CODE
+        * or MD_BLOCK_HTML). In such cases, '\n' is part of the text itself. */
+        MD_TEXT_BR,         /* <br> (hard break) */
+        MD_TEXT_SOFTBR,     /* '\n' in source text where it is not semantically meaningful (soft break) */
+
+        /* Entity.
+        * (a) Named entity, e.g. &nbsp; 
+        *     (Note MD4C does not have a list of known entities.
+        *     Anything matching the regexp /&[A-Za-z][A-Za-z0-9]{1,47};/ is
+        *     treated as a named entity.)
+        * (b) Numerical entity, e.g. &#1234;
+        * (c) Hexadecimal entity, e.g. &#x12AB;
+        *
+        * As MD4C is mostly encoding agnostic, application gets the verbatim
+        * entity text into the MD_PARSER::text_callback(). */
+        MD_TEXT_ENTITY,
+
+        /* Text in a code block (inside MD_BLOCK_CODE) or inlined code (`code`).
+        * If it is inside MD_BLOCK_CODE, it includes spaces for indentation and
+        * '\n' for new lines. MD_TEXT_BR and MD_TEXT_SOFTBR are not sent for this
+        * kind of text. */
+        MD_TEXT_CODE,
+
+        /* Text is a raw HTML. If it is contents of a raw HTML block (i.e. not
+        * an inline raw HTML), then MD_TEXT_BR and MD_TEXT_SOFTBR are not used.
+        * The text contains verbatim '\n' for the new lines. */
+        MD_TEXT_HTML,
+
+        /* Text is inside an equation. This is processed the same way as inlined code
+        * spans (`code`). */
+        MD_TEXT_LATEXMATH
+    } MD_TEXTTYPE;
+
+
+    /* Alignment enumeration. */
+    typedef enum MD_ALIGN {
+        MD_ALIGN_DEFAULT = 0,   /* When unspecified. */
+        MD_ALIGN_LEFT,
+        MD_ALIGN_CENTER,
+        MD_ALIGN_RIGHT
+    } MD_ALIGN;
+
+
+    /* String attribute.
+    *
+    * This wraps strings which are outside of a normal text flow and which are
+    * propagated within various detailed structures, but which still may contain
+    * string portions of different types like e.g. entities.
+    *
+    * So, for example, lets consider this image:
+    *
+    *     ![image alt text](http://example.org/image.png 'foo &quot; bar')
+    *
+    * The image alt text is propagated as a normal text via the MD_PARSER::text()
+    * callback. However, the image title ('foo &quot; bar') is propagated as
+    * MD_ATTRIBUTE in MD_SPAN_IMG_DETAIL::title.
+    *
+    * Then the attribute MD_SPAN_IMG_DETAIL::title shall provide the following:
+    *  -- [0]: "foo "   (substr_types[0] == MD_TEXT_NORMAL; substr_offsets[0] == 0)
+    *  -- [1]: "&quot;" (substr_types[1] == MD_TEXT_ENTITY; substr_offsets[1] == 4)
+    *  -- [2]: " bar"   (substr_types[2] == MD_TEXT_NORMAL; substr_offsets[2] == 10)
+    *  -- [3]: (n/a)    (n/a                              ; substr_offsets[3] == 14)
+    *
+    * Note that these invariants are always guaranteed:
+    *  -- substr_offsets[0] == 0
+    *  -- substr_offsets[LAST+1] == size
+    *  -- Currently, only MD_TEXT_NORMAL, MD_TEXT_ENTITY, MD_TEXT_NULLCHAR
+    *     substrings can appear. This could change only of the specification
+    *     changes.
+    */
+    typedef struct MD_ATTRIBUTE {
+        const SSS_CHAR* text;
+        SSS_SIZE size;
+        const MD_TEXTTYPE* substr_types;
+        const SSS_OFFSET* substr_offsets;
+    } MD_ATTRIBUTE;
+
+
+    /* Detailed info for MD_BLOCK_UL. */
+    typedef struct MD_BLOCK_UL_DETAIL {
+        int is_tight;           /* Non-zero if tight list, zero if loose. */
+        SSS_CHAR mark;           /* Item bullet character in MarkDown source of the list, e.g. '-', '+', '*'. */
+    } MD_BLOCK_UL_DETAIL;
+
+    /* Detailed info for MD_BLOCK_OL. */
+    typedef struct MD_BLOCK_OL_DETAIL {
+        unsigned start;         /* Start index of the ordered list. */
+        int is_tight;           /* Non-zero if tight list, zero if loose. */
+        SSS_CHAR mark_delimiter; /* Character delimiting the item marks in MarkDown source, e.g. '.' or ')' */
+    } MD_BLOCK_OL_DETAIL;
+
+    /* Detailed info for MD_BLOCK_LI. */
+    typedef struct MD_BLOCK_LI_DETAIL {
+        int is_task;            /* Can be non-zero only with MD_FLAG_TASKLISTS */
+        SSS_CHAR task_mark;      /* If is_task, then one of 'x', 'X' or ' '. Undefined otherwise. */
+        SSS_OFFSET task_mark_offset;  /* If is_task, then offset in the input of the char between '[' and ']'. */
+    } MD_BLOCK_LI_DETAIL;
+
+    /* Detailed info for MD_BLOCK_H. */
+    typedef struct MD_BLOCK_H_DETAIL {
+        unsigned level;         /* Header level (1 - 6) */
+    } MD_BLOCK_H_DETAIL;
+
+    /* Detailed info for MD_BLOCK_CODE. */
+    typedef struct MD_BLOCK_CODE_DETAIL {
+        MD_ATTRIBUTE info;
+        MD_ATTRIBUTE lang;
+        SSS_CHAR fence_char;     /* The character used for fenced code block; or zero for indented code block. */
+    } MD_BLOCK_CODE_DETAIL;
+
+    /* Detailed info for MD_BLOCK_TABLE. */
+    typedef struct MD_BLOCK_TABLE_DETAIL {
+        unsigned col_count;         /* Count of columns in the table. */
+        unsigned head_row_count;    /* Count of rows in the table header (currently always 1) */
+        unsigned body_row_count;    /* Count of rows in the table body */
+    } MD_BLOCK_TABLE_DETAIL;
+
+    /* Detailed info for MD_BLOCK_TH and MD_BLOCK_TD. */
+    typedef struct MD_BLOCK_TD_DETAIL {
+        MD_ALIGN align;
+    } MD_BLOCK_TD_DETAIL;
+
+    /* Detailed info for MD_SPAN_A. */
+    typedef struct MD_SPAN_A_DETAIL {
+        MD_ATTRIBUTE href;
+        MD_ATTRIBUTE title;
+        int is_autolink;            /* nonzero if this is an autolink */
+    } MD_SPAN_A_DETAIL;
+
+    /* Detailed info for MD_SPAN_IMG. */
+    typedef struct MD_SPAN_IMG_DETAIL {
+        MD_ATTRIBUTE src;
+        MD_ATTRIBUTE title;
+    } MD_SPAN_IMG_DETAIL;
+
+    /* Detailed info for MD_SPAN_WIKILINK. */
+    typedef struct MD_SPAN_WIKILINK {
+        MD_ATTRIBUTE target;
+    } MD_SPAN_WIKILINK_DETAIL;
+
+    /* Flags specifying extensions/deviations from CommonMark specification.
+    *
+    * By default (when MD_PARSER::flags == 0), we follow CommonMark specification.
+    * The following flags may allow some extensions or deviations from it.
+    */
+    #define MD_FLAG_COLLAPSEWHITESPACE          0x0001  /* In MD_TEXT_NORMAL, collapse non-trivial whitespace into single ' ' */
+    #define MD_FLAG_PERMISSIVEATXHEADERS        0x0002  /* Do not require space in ATX headers ( ###header ) */
+    #define MD_FLAG_PERMISSIVEURLAUTOLINKS      0x0004  /* Recognize URLs as autolinks even without '<', '>' */
+    #define MD_FLAG_PERMISSIVEEMAILAUTOLINKS    0x0008  /* Recognize e-mails as autolinks even without '<', '>' and 'mailto:' */
+    #define MD_FLAG_NOINDENTEDCODEBLOCKS        0x0010  /* Disable indented code blocks. (Only fenced code works.) */
+    #define MD_FLAG_NOHTMLBLOCKS                0x0020  /* Disable raw HTML blocks. */
+    #define MD_FLAG_NOHTMLSPANS                 0x0040  /* Disable raw HTML (inline). */
+    #define MD_FLAG_TABLES                      0x0100  /* Enable tables extension. */
+    #define MD_FLAG_STRIKETHROUGH               0x0200  /* Enable strikethrough extension. */
+    #define MD_FLAG_PERMISSIVEWWWAUTOLINKS      0x0400  /* Enable WWW autolinks (even without any scheme prefix, if they begin with 'www.') */
+    #define MD_FLAG_TASKLISTS                   0x0800  /* Enable task list extension. */
+    #define MD_FLAG_LATEXMATHSPANS              0x1000  /* Enable $ and $$ containing LaTeX equations. */
+    #define MD_FLAG_WIKILINKS                   0x2000  /* Enable wiki links extension. */
+    #define MD_FLAG_UNDERLINE                   0x4000  /* Enable underline extension (and disables '_' for normal emphasis). */
+    #define MD_FLAG_HARD_SOFT_BREAKS            0x8000  /* Force all soft breaks to act as hard breaks. */
+
+    #define MD_FLAG_PERMISSIVEAUTOLINKS         (MD_FLAG_PERMISSIVEEMAILAUTOLINKS | MD_FLAG_PERMISSIVEURLAUTOLINKS | MD_FLAG_PERMISSIVEWWWAUTOLINKS)
+    #define MD_FLAG_NOHTML                      (MD_FLAG_NOHTMLBLOCKS | MD_FLAG_NOHTMLSPANS)
+
+    /* Convenient sets of flags corresponding to well-known Markdown dialects.
+    *
+    * Note we may only support subset of features of the referred dialect.
+    * The constant just enables those extensions which bring us as close as
+    * possible given what features we implement.
+    *
+    * ABI compatibility note: Meaning of these can change in time as new
+    * extensions, bringing the dialect closer to the original, are implemented.
+    */
+    #define MD_DIALECT_COMMONMARK               0
+    #define MD_DIALECT_GITHUB                   (MD_FLAG_PERMISSIVEAUTOLINKS | MD_FLAG_TABLES | MD_FLAG_STRIKETHROUGH | MD_FLAG_TASKLISTS)
+
+    /* Parser structure.
+    */
+    typedef struct MD_PARSER {
+        /* Reserved. Set to zero.
+        */
+        unsigned abi_version;
+
+        /* Dialect options. Bitmask of MD_FLAG_xxxx values.
+        */
+        unsigned flags;
+
+        /* Caller-provided rendering callbacks.
+        *
+        * For some block/span types, more detailed information is provided in a
+        * type-specific structure pointed by the argument 'detail'.
+        *
+        * The last argument of all callbacks, 'userdata', is just propagated from
+        * md_parse() and is available for any use by the application.
+        *
+        * Note any strings provided to the callbacks as their arguments or as
+        * members of any detail structure are generally not zero-terminated.
+        * Application has to take the respective size information into account.
+        *
+        * Any rendering callback may abort further parsing of the document by
+        * returning non-zero.
+        */
+        int (*enter_block)(MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+        int (*leave_block)(MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+
+        int (*enter_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+        int (*leave_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+
+        int (*text)(MD_TEXTTYPE /*type*/, const SSS_CHAR* /*text*/, SSS_SIZE /*size*/, void* /*userdata*/);
+
+        /* Debug callback. Optional (may be NULL).
+        *
+        * If provided and something goes wrong, this function gets called.
+        * This is intended for debugging and problem diagnosis for developers;
+        * it is not intended to provide any errors suitable for displaying to an
+        * end user.
+        */
+        void (*debug_log)(const char* /*msg*/, void* /*userdata*/);
+
+        /* Reserved. Set to NULL.
+        */
+        void (*syntax)(void);
+    } MD_PARSER;
+
+
+    /* For backward compatibility. Do not use in new code.
+    */
+    typedef MD_PARSER MD_RENDERER;
+
+    /* Most entities are formed by single Unicode codepoint, few by two codepoints.
+    * Single-codepoint entities have codepoints[1] set to zero. */
+    typedef struct ENTITY_tag ENTITY;
+    struct ENTITY_tag {
+        const char* name;
+        unsigned codepoints[2];
+    };
+
+    const ENTITY* entity_lookup(const char* name, size_t name_size);
+
+    /* If set, debug output from md_parse() is sent to stderr. */
+    #define MD_HTML_FLAG_DEBUG                  0x0001
+    #define MD_HTML_FLAG_VERBATIM_ENTITIES      0x0002
+    #define MD_HTML_FLAG_SKIP_UTF8_BOM          0x0004
+    #define MD_HTML_FLAG_XHTML                  0x0008
+
+
 
     /*****************************
      ***  Miscellaneous Stuff  ***
@@ -545,9 +542,9 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     ************************/
 
     /* These are omnipresent so lets save some typing. */
-    #define CHAR    MD_CHAR
-    #define SZ      MD_SIZE
-    #define OFF     MD_OFFSET
+    #define CHAR    SSS_CHAR
+    #define SZ      SSS_SIZE
+    #define OFF     SSS_OFFSET
 
     #define SZ_MAX      (sizeof(SZ) == 8 ? UINT64_MAX : UINT32_MAX)
     #define OFF_MAX     (sizeof(OFF) == 8 ? UINT64_MAX : UINT32_MAX)
@@ -898,10 +895,10 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     /* If the offset falls into a gap between line, we return the following
     * line. */
     static const MD_LINE*
-    md_lookup_line(OFF off, const MD_LINE* lines, MD_SIZE n_lines, MD_SIZE* p_line_index)
+    md_lookup_line(OFF off, const MD_LINE* lines, SSS_SIZE n_lines, SSS_SIZE* p_line_index)
     {
-        MD_SIZE lo, hi;
-        MD_SIZE pivot;
+        SSS_SIZE lo, hi;
+        SSS_SIZE pivot;
         const MD_LINE* line;
 
         lo = 0;
@@ -1321,7 +1318,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     * what the caller should allocate.)
     */
     static void
-    md_merge_lines(MD_CTX* ctx, OFF beg, OFF end, const MD_LINE* lines, MD_SIZE n_lines,
+    md_merge_lines(MD_CTX* ctx, OFF beg, OFF end, const MD_LINE* lines, SSS_SIZE n_lines,
                 CHAR line_break_replacement_char, CHAR* buffer, SZ* p_size)
     {
         CHAR* ptr = buffer;
@@ -1343,7 +1340,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
             }
 
             if(off >= end) {
-                *p_size = (MD_SIZE)(ptr - buffer);
+                *p_size = (SSS_SIZE)(ptr - buffer);
                 return;
             }
 
@@ -1358,7 +1355,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     /* Wrapper of md_merge_lines() which allocates new buffer for the output string.
     */
     static int
-    md_merge_lines_alloc(MD_CTX* ctx, OFF beg, OFF end, const MD_LINE* lines, MD_SIZE n_lines,
+    md_merge_lines_alloc(MD_CTX* ctx, OFF beg, OFF end, const MD_LINE* lines, SSS_SIZE n_lines,
                         CHAR line_break_replacement_char, CHAR** p_str, SZ* p_size)
     {
         CHAR* buffer;
@@ -1405,12 +1402,12 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     * by n_lines == 0.
     */
     static int
-    md_is_html_tag(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
+    md_is_html_tag(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
     {
         int attr_state;
         OFF off = beg;
         OFF line_end = (n_lines > 0) ? lines[0].end : ctx->size;
-        MD_SIZE line_index = 0;
+        SSS_SIZE line_index = 0;
 
         MD_ASSERT(CH(beg) == _T('<'));
 
@@ -1523,13 +1520,13 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_scan_for_html_closer(MD_CTX* ctx, const MD_CHAR* str, MD_SIZE len,
-                            const MD_LINE* lines, MD_SIZE n_lines,
+    md_scan_for_html_closer(MD_CTX* ctx, const SSS_CHAR* str, SSS_SIZE len,
+                            const MD_LINE* lines, SSS_SIZE n_lines,
                             OFF beg, OFF max_end, OFF* p_end,
                             OFF* p_scan_horizon)
     {
         OFF off = beg;
-        MD_SIZE line_index = 0;
+        SSS_SIZE line_index = 0;
 
         if(off < *p_scan_horizon  &&  *p_scan_horizon >= max_end - len) {
             /* We have already scanned the range up to the max_end so we know
@@ -1559,7 +1556,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_html_comment(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
+    md_is_html_comment(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
     {
         OFF off = beg;
 
@@ -1579,7 +1576,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_html_processing_instruction(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
+    md_is_html_processing_instruction(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
     {
         OFF off = beg;
 
@@ -1594,7 +1591,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_html_declaration(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
+    md_is_html_declaration(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
     {
         OFF off = beg;
 
@@ -1616,7 +1613,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_html_cdata(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
+    md_is_html_cdata(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
     {
         static const CHAR open_str[] = _T("<![CDATA[");
         static const SZ open_size = SIZEOF_ARRAY(open_str) - 1;
@@ -1634,7 +1631,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_html_any(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
+    md_is_html_any(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg, OFF max_end, OFF* p_end)
     {
         MD_ASSERT(CH(beg) == _T('<'));
         return (md_is_html_tag(ctx, lines, n_lines, beg, max_end, p_end)  ||
@@ -2262,14 +2259,14 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
 
     static int
-    md_is_link_label(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg,
-                    OFF* p_end, MD_SIZE* p_beg_line_index, MD_SIZE* p_end_line_index,
+    md_is_link_label(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg,
+                    OFF* p_end, SSS_SIZE* p_beg_line_index, SSS_SIZE* p_end_line_index,
                     OFF* p_contents_beg, OFF* p_contents_end)
     {
         OFF off = beg;
         OFF contents_beg = 0;
         OFF contents_end = 0;
-        MD_SIZE line_index = 0;
+        SSS_SIZE line_index = 0;
         int len = 0;
 
         *p_beg_line_index = 0;
@@ -2421,13 +2418,13 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_link_title(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg,
-                    OFF* p_end, MD_SIZE* p_beg_line_index, MD_SIZE* p_end_line_index,
+    md_is_link_title(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg,
+                    OFF* p_end, SSS_SIZE* p_beg_line_index, SSS_SIZE* p_end_line_index,
                     OFF* p_contents_beg, OFF* p_contents_end)
     {
         OFF off = beg;
         CHAR closer_char;
-        MD_SIZE line_index = 0;
+        SSS_SIZE line_index = 0;
 
         /* White space with up to one line break. */
         while(off < lines[line_index].end  &&  ISWHITESPACE(off))
@@ -2489,21 +2486,21 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     * Returns -1 in case of an error (out of memory).
     */
     static int
-    md_is_link_reference_definition(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
+    md_is_link_reference_definition(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines)
     {
         OFF label_contents_beg;
         OFF label_contents_end;
-        MD_SIZE label_contents_line_index;
+        SSS_SIZE label_contents_line_index;
         int label_is_multiline = FALSE;
         OFF dest_contents_beg;
         OFF dest_contents_end;
         OFF title_contents_beg;
         OFF title_contents_end;
-        MD_SIZE title_contents_line_index;
+        SSS_SIZE title_contents_line_index;
         int title_is_multiline = FALSE;
         OFF off;
-        MD_SIZE line_index = 0;
-        MD_SIZE tmp_line_index;
+        SSS_SIZE line_index = 0;
+        SSS_SIZE tmp_line_index;
         MD_REF_DEF* def = NULL;
         int ret = 0;
 
@@ -2611,7 +2608,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_link_reference(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines,
+    md_is_link_reference(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines,
                         OFF beg, OFF end, MD_LINK_ATTR* attr)
     {
         const MD_REF_DEF* def;
@@ -2656,7 +2653,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
         if(def != NULL) {
             /* See https://github.com/mity/md4c/issues/238 */
-            MD_SIZE output_size_estimation = def->label_size + def->title_size + def->dest_end - def->dest_beg;
+            SSS_SIZE output_size_estimation = def->label_size + def->title_size + def->dest_end - def->dest_beg;
             if(output_size_estimation < ctx->max_ref_def_output) {
                 ctx->max_ref_def_output -= output_size_estimation;
                 ret = TRUE;
@@ -2671,14 +2668,14 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_inline_link_spec(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines,
+    md_is_inline_link_spec(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines,
                         OFF beg, OFF* p_end, MD_LINK_ATTR* attr)
     {
-        MD_SIZE line_index = 0;
-        MD_SIZE tmp_line_index;
+        SSS_SIZE line_index = 0;
+        SSS_SIZE tmp_line_index;
         OFF title_contents_beg;
         OFF title_contents_end;
-        MD_SIZE title_contents_line_index;
+        SSS_SIZE title_contents_line_index;
         int title_is_multiline;
         OFF off = beg;
         int ret = FALSE;
@@ -2885,7 +2882,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     #define MD_MARK_HASNESTEDBRACKETS           0x20  /* For '[' to rule out invalid link labels early */
 
     static MD_MARKSTACK*
-    md_emph_stack(MD_CTX* ctx, MD_CHAR ch, unsigned flags)
+    md_emph_stack(MD_CTX* ctx, SSS_CHAR ch, unsigned flags)
     {
         MD_MARKSTACK* stack;
 
@@ -3105,7 +3102,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_is_code_span(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, OFF beg,
+    md_is_code_span(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, OFF beg,
                     MD_MARK* opener, MD_MARK* closer,
                     OFF last_potential_closers[CODESPAN_MARK_MAXLEN],
                     int* p_reached_paragraph_end)
@@ -3121,7 +3118,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         int has_space_before_closer = FALSE;
         int has_eol_before_closer = FALSE;
         int has_only_space = TRUE;
-        MD_SIZE line_index = 0;
+        SSS_SIZE line_index = 0;
 
         line_end = lines[0].end;
         opener_end = opener_beg;
@@ -3332,9 +3329,9 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_collect_marks(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, int table_mode)
+    md_collect_marks(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, int table_mode)
     {
-        MD_SIZE line_index;
+        SSS_SIZE line_index;
         int ret = 0;
         MD_MARK* mark;
         OFF codespan_last_potential_closers[CODESPAN_MARK_MAXLEN] = { 0 };
@@ -3723,11 +3720,11 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     /* Forward declaration. */
-    static void md_analyze_link_contents(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines,
+    static void md_analyze_link_contents(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines,
                                         int mark_beg, int mark_end);
 
     static int
-    md_resolve_links(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
+    md_resolve_links(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines)
     {
         int opener_index = ctx->unresolved_link_head;
         OFF last_link_beg = 0;
@@ -4225,11 +4222,11 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     md_analyze_permissive_autolink(MD_CTX* ctx, int mark_index)
     {
         static const struct {
-            const MD_CHAR start_char;
-            const MD_CHAR delim_char;
-            const MD_CHAR* allowed_nonalnum_chars;
+            const SSS_CHAR start_char;
+            const SSS_CHAR delim_char;
+            const SSS_CHAR* allowed_nonalnum_chars;
             int min_components;
-            const MD_CHAR optional_end_char;
+            const SSS_CHAR optional_end_char;
         } URL_MAP[] = {
             { _T('\0'), _T('.'),  _T(".-_"),      2, _T('\0') },    /* host, mandatory */
             { _T('/'),  _T('/'),  _T("/.-_"),     0, _T('/') },     /* path */
@@ -4362,7 +4359,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     #define MD_ANALYZE_NOSKIP_EMPH  0x01
 
     static inline void
-    md_analyze_marks(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines,
+    md_analyze_marks(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines,
                     int mark_beg, int mark_end, const CHAR* mark_chars, unsigned flags)
     {
         int i = mark_beg;
@@ -4428,7 +4425,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
     /* Analyze marks (build ctx->marks). */
     static int
-    md_analyze_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines, int table_mode)
+    md_analyze_inlines(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines, int table_mode)
     {
         int ret;
 
@@ -4461,7 +4458,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static void
-    md_analyze_link_contents(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines,
+    md_analyze_link_contents(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines,
                             int mark_beg, int mark_end)
     {
         int i;
@@ -4532,7 +4529,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
     /* Render the output, accordingly to the analyzed ctx->marks. */
     static int
-    md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
+    md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines)
     {
         MD_TEXTTYPE text_type;
         const MD_LINE* line = lines;
@@ -4852,7 +4849,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     /* Forward declaration. */
-    static int md_process_normal_block_contents(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines);
+    static int md_process_normal_block_contents(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines);
 
     static int
     md_process_table_cell(MD_CTX* ctx, MD_BLOCKTYPE cell_type, MD_ALIGN align, OFF beg, OFF end)
@@ -4934,10 +4931,10 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_process_table_block_contents(MD_CTX* ctx, int col_count, const MD_LINE* lines, MD_SIZE n_lines)
+    md_process_table_block_contents(MD_CTX* ctx, int col_count, const MD_LINE* lines, SSS_SIZE n_lines)
     {
         MD_ALIGN* align;
-        MD_SIZE line_index;
+        SSS_SIZE line_index;
         int ret = 0;
 
         /* At least two lines have to be present: The column headers and the line
@@ -4998,7 +4995,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         * MD_BLOCK_LI:     Task mark offset in the input doc.
         * MD_BLOCK_OL:     Start item number.
         */
-        MD_SIZE n_lines;
+        SSS_SIZE n_lines;
     };
 
     struct MD_CONTAINER_tag {
@@ -5014,7 +5011,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
 
     static int
-    md_process_normal_block_contents(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
+    md_process_normal_block_contents(MD_CTX* ctx, const MD_LINE* lines, SSS_SIZE n_lines)
     {
         int i;
         int ret;
@@ -5032,12 +5029,12 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_process_verbatim_block_contents(MD_CTX* ctx, MD_TEXTTYPE text_type, const MD_VERBATIMLINE* lines, MD_SIZE n_lines)
+    md_process_verbatim_block_contents(MD_CTX* ctx, MD_TEXTTYPE text_type, const MD_VERBATIMLINE* lines, SSS_SIZE n_lines)
     {
         static const CHAR indent_chunk_str[] = _T("                ");
         static const SZ indent_chunk_size = SIZEOF_ARRAY(indent_chunk_str) - 1;
 
-        MD_SIZE line_index;
+        SSS_SIZE line_index;
         int ret = 0;
 
         for(line_index = 0; line_index < n_lines; line_index++) {
@@ -5066,7 +5063,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static int
-    md_process_code_block_contents(MD_CTX* ctx, int is_fenced, const MD_VERBATIMLINE* lines, MD_SIZE n_lines)
+    md_process_code_block_contents(MD_CTX* ctx, int is_fenced, const MD_VERBATIMLINE* lines, SSS_SIZE n_lines)
     {
         if(is_fenced) {
             /* Skip the first line in case of fenced code: It is the fence.
@@ -5393,8 +5390,8 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     md_consume_link_reference_definitions(MD_CTX* ctx)
     {
         MD_LINE* lines = (MD_LINE*) (ctx->current_block + 1);
-        MD_SIZE n_lines = ctx->current_block->n_lines;
-        MD_SIZE n = 0;
+        SSS_SIZE n_lines = ctx->current_block->n_lines;
+        SSS_SIZE n = 0;
 
         /* Compute how many lines at the start of the block form one or more
         * reference definitions. */
@@ -5457,7 +5454,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         }
 
         if(ctx->current_block->type == MD_BLOCK_H  &&  (ctx->current_block->flags & MD_BLOCK_SETEXT_HEADER)) {
-            MD_SIZE n_lines = ctx->current_block->n_lines;
+            SSS_SIZE n_lines = ctx->current_block->n_lines;
 
             if(n_lines > 1) {
                 /* Get rid of the underline. */
@@ -6751,7 +6748,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     * fails), -1 is returned. If the processing is aborted due any callback
     * returning non-zero, the return value of the callback is returned.
     */
-    static int md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userdata)
+    static int md_parse(const SSS_CHAR* text, SSS_SIZE size, const MD_PARSER* parser, void* userdata)
     {
         MD_CTX ctx;
         int i;
@@ -9011,7 +9008,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
     typedef struct MD_HTML_tag MD_HTML;
     struct MD_HTML_tag {
-        void (*process_output)(const MD_CHAR*, MD_SIZE, void*);
+        void (*process_output)(const SSS_CHAR*, SSS_SIZE, void*);
         void* userdata;
         unsigned flags;
         int image_nesting_level;
@@ -9032,7 +9029,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     #define HTML_ISALNUM(ch)     (HTML_ISLOWER(ch) || HTML_ISUPPER(ch) || HTML_ISDIGIT(ch))
 
 
-    static inline void render_verbatim(MD_HTML* r, const MD_CHAR* text, MD_SIZE size)
+    static inline void render_verbatim(MD_HTML* r, const SSS_CHAR* text, SSS_SIZE size)
     {
         r->process_output(text, size, r->userdata);
     }
@@ -9040,14 +9037,14 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     /* Keep this as a macro. Most compiler should then be smart enough to replace
     * the strlen() call with a compile-time constant if the string is a C literal. */
     #define RENDER_VERBATIM(r, verbatim)                                    \
-            render_verbatim((r), (verbatim), (MD_SIZE) (strlen(verbatim)))
+            render_verbatim((r), (verbatim), (SSS_SIZE) (strlen(verbatim)))
 
 
     static void
-    render_html_escaped(MD_HTML* r, const MD_CHAR* data, MD_SIZE size)
+    render_html_escaped(MD_HTML* r, const SSS_CHAR* data, SSS_SIZE size)
     {
-        MD_OFFSET beg = 0;
-        MD_OFFSET off = 0;
+        SSS_OFFSET beg = 0;
+        SSS_OFFSET off = 0;
 
         /* Some characters need to be escaped in normal HTML text. */
         #define NEED_HTML_ESC(ch)   (r->escape_map[(unsigned char)(ch)] & NEED_HTML_ESC_FLAG)
@@ -9078,11 +9075,11 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         }
     }
 
-    static void render_url_escaped(MD_HTML* r, const MD_CHAR* data, MD_SIZE size)
+    static void render_url_escaped(MD_HTML* r, const SSS_CHAR* data, SSS_SIZE size)
     {
-        static const MD_CHAR hex_chars[] = "0123456789ABCDEF";
-        MD_OFFSET beg = 0;
-        MD_OFFSET off = 0;
+        static const SSS_CHAR hex_chars[] = "0123456789ABCDEF";
+        SSS_OFFSET beg = 0;
+        SSS_OFFSET off = 0;
 
         /* Some characters need to be escaped in URL attributes. */
         #define NEED_URL_ESC(ch)    (r->escape_map[(unsigned char)(ch)] & NEED_URL_ESC_FLAG)
@@ -9125,9 +9122,9 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static void render_utf8_codepoint(MD_HTML* r, unsigned codepoint,
-                        void (*fn_append)(MD_HTML*, const MD_CHAR*, MD_SIZE))
+                        void (*fn_append)(MD_HTML*, const SSS_CHAR*, SSS_SIZE))
     {
-        static const MD_CHAR utf8_replacement_char[] = { (char)0xef, (char)0xbf, (char)0xbd };
+        static const SSS_CHAR utf8_replacement_char[] = { (char)0xef, (char)0xbf, (char)0xbd };
 
         unsigned char utf8[4];
         size_t n;
@@ -9153,15 +9150,15 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         }
 
         if(0 < codepoint  &&  codepoint <= 0x10ffff)
-            fn_append(r, (char*)utf8, (MD_SIZE)n);
+            fn_append(r, (char*)utf8, (SSS_SIZE)n);
         else
             fn_append(r, utf8_replacement_char, 3);
     }
 
     /* Translate entity to its UTF-8 equivalent, or output the verbatim one
     * if such entity is unknown (or if the translation is disabled). */
-    static void render_entity(MD_HTML* r, const MD_CHAR* text, MD_SIZE size,
-                void (*fn_append)(MD_HTML*, const MD_CHAR*, MD_SIZE))
+    static void render_entity(MD_HTML* r, const SSS_CHAR* text, SSS_SIZE size,
+                void (*fn_append)(MD_HTML*, const SSS_CHAR*, SSS_SIZE))
     {
         if(r->flags & MD_HTML_FLAG_VERBATIM_ENTITIES) {
             render_verbatim(r, text, size);
@@ -9174,12 +9171,12 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
             if(text[2] == 'x' || text[2] == 'X') {
                 /* Hexadecimal entity (e.g. "&#x1234abcd;")). */
-                MD_SIZE i;
+                SSS_SIZE i;
                 for(i = 3; i < size-1; i++)
                     codepoint = 16 * codepoint + hex_val(text[i]);
             } else {
                 /* Decimal entity (e.g. "&1234;") */
-                MD_SIZE i;
+                SSS_SIZE i;
                 for(i = 2; i < size-1; i++)
                     codepoint = 10 * codepoint + (text[i] - '0');
             }
@@ -9203,15 +9200,15 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     }
 
     static void render_attribute(MD_HTML* r, const MD_ATTRIBUTE* attr,
-                    void (*fn_append)(MD_HTML*, const MD_CHAR*, MD_SIZE))
+                    void (*fn_append)(MD_HTML*, const SSS_CHAR*, SSS_SIZE))
     {
         int i;
 
         for(i = 0; attr->substr_offsets[i] < attr->size; i++) {
             MD_TEXTTYPE type = attr->substr_types[i];
-            MD_OFFSET off = attr->substr_offsets[i];
-            MD_SIZE size = attr->substr_offsets[i+1] - off;
-            const MD_CHAR* text = attr->text + off;
+            SSS_OFFSET off = attr->substr_offsets[i];
+            SSS_SIZE size = attr->substr_offsets[i+1] - off;
+            const SSS_CHAR* text = attr->text + off;
 
             switch(type) {
                 case MD_TEXT_NULLCHAR:  render_utf8_codepoint(r, 0x0000, render_verbatim); break;
@@ -9262,7 +9259,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         RENDER_VERBATIM(r, ">");
     }
 
-    static void render_open_td_block(MD_HTML* r, const MD_CHAR* cell_type, const MD_BLOCK_TD_DETAIL* det)
+    static void render_open_td_block(MD_HTML* r, const SSS_CHAR* cell_type, const MD_BLOCK_TD_DETAIL* det)
     {
         RENDER_VERBATIM(r, "<");
         RENDER_VERBATIM(r, cell_type);
@@ -9322,7 +9319,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     static int
     enter_block_callback(MD_BLOCKTYPE type, void* detail, void* userdata)
     {
-        static const MD_CHAR* head[6] = { "<h1>", "<h2>", "<h3>", "<h4>", "<h5>", "<h6>" };
+        static const SSS_CHAR* head[6] = { "<h1>", "<h2>", "<h3>", "<h4>", "<h5>", "<h6>" };
         MD_HTML* r = (MD_HTML*) userdata;
 
         switch(type) {
@@ -9350,7 +9347,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     static int
     leave_block_callback(MD_BLOCKTYPE type, void* detail, void* userdata)
     {
-        static const MD_CHAR* head[6] = { "</h1>\n", "</h2>\n", "</h3>\n", "</h4>\n", "</h5>\n", "</h6>\n" };
+        static const SSS_CHAR* head[6] = { "</h1>\n", "</h2>\n", "</h3>\n", "</h4>\n", "</h5>\n", "</h6>\n" };
         MD_HTML* r = (MD_HTML*) userdata;
 
         switch(type) {
@@ -9442,7 +9439,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         return 0;
     }
 
-    static int text_callback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
+    static int text_callback(MD_TEXTTYPE type, const SSS_CHAR* text, SSS_SIZE size, void* userdata)
     {
         MD_HTML* r = (MD_HTML*) userdata;
 
@@ -9484,8 +9481,8 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
     * Returns -1 on error (if md_parse() fails.)
     * Returns 0 on success.
     */
-    int md_html(const MD_CHAR* input, MD_SIZE input_size,
-            void (*process_output)(const MD_CHAR*, MD_SIZE, void*),
+    int md_html(const SSS_CHAR* input, SSS_SIZE input_size,
+            void (*process_output)(const SSS_CHAR*, SSS_SIZE, void*),
             void* userdata, unsigned parser_flags, unsigned renderer_flags)
     {
         MD_HTML render = { process_output, userdata, renderer_flags, 0, { 0 } };
@@ -9515,8 +9512,8 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         }
 
         /* Consider skipping UTF-8 byte order mark (BOM). */
-        if(renderer_flags & MD_HTML_FLAG_SKIP_UTF8_BOM  &&  sizeof(MD_CHAR) == 1) {
-            static const MD_CHAR bom[3] = { (char)0xef, (char)0xbb, (char)0xbf };
+        if(renderer_flags & MD_HTML_FLAG_SKIP_UTF8_BOM  &&  sizeof(SSS_CHAR) == 1) {
+            static const SSS_CHAR bom[3] = { (char)0xef, (char)0xbb, (char)0xbf };
             if(input_size >= sizeof(bom)  &&  memcmp(input, bom, sizeof(bom)) == 0) {
                 input += sizeof(bom);
                 input_size -= sizeof(bom);
@@ -9549,7 +9546,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
      * IN THE SOFTWARE.
      */
 
-    MD_CHAR* sss_read_file(const MD_CHAR* filename, size_t* out_size)
+    SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size)
     {
         FILE* file = fopen(filename, "rb");
         if (!file)
@@ -9572,8 +9569,8 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         }
         rewind(file);
 
-        MD_CHAR* buffer = malloc(file_size + 1);
-        size_t bytes_read = fread(buffer, sizeof(MD_CHAR), file_size, file);
+        SSS_CHAR* buffer = malloc(file_size + 1);
+        size_t bytes_read = fread(buffer, sizeof(SSS_CHAR), file_size, file);
         if (bytes_read != file_size)
         {
             fclose(file);
@@ -9591,9 +9588,9 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         return buffer;
     }
 
-    int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr)
+    int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr)
     {
-        MD_SIZE length = strlen(cstr);
+        SSS_SIZE length = strlen(cstr);
 
         // Open the file for writing in binary mode
         FILE *file = fopen(filename, "wb");
@@ -9624,26 +9621,26 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         return calloc(1, sizeof(StaticSiteInstance));
     }
 
-    void sss_add_template(StaticSiteInstance* instance, MD_CHAR* template_data, size_t length, MD_CHAR* template_name)
+    void sss_add_template(StaticSiteInstance* instance, SSS_CHAR* template_data, size_t length, SSS_CHAR* template_name)
     {
         return;
     }
 
     struct SSS__DynamicString
     {
-        MD_CHAR* data;
-        MD_SIZE length;
-        MD_SIZE capacity;
+        SSS_CHAR* data;
+        SSS_SIZE length;
+        SSS_SIZE capacity;
     };
 
     static void sss__dynamic_string_init(struct SSS__DynamicString* arr)
     {
-        arr->data = malloc(sizeof(MD_CHAR) * 1024);
+        arr->data = malloc(sizeof(SSS_CHAR) * 1024);
         arr->length = 0;
         arr->capacity = 1024;
     }
 
-    static MD_SIZE next_power_of_two(MD_SIZE x)
+    static SSS_SIZE next_power_of_two(SSS_SIZE x)
     {
         x--;
         x |= x >> 1;
@@ -9655,12 +9652,12 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         return x;
     }
 
-    static void sss__dynamic_string_append(struct SSS__DynamicString* arr, const MD_CHAR* str, MD_SIZE length)
+    static void sss__dynamic_string_append(struct SSS__DynamicString* arr, const SSS_CHAR* str, SSS_SIZE length)
     {
-        MD_SIZE required_capacity = arr->length + length;
+        SSS_SIZE required_capacity = arr->length + length;
         if (arr->capacity < required_capacity)
         {
-            MD_SIZE new_capacity = next_power_of_two(required_capacity);
+            SSS_SIZE new_capacity = next_power_of_two(required_capacity);
             arr->data = realloc(arr->data, new_capacity);
             arr->capacity = new_capacity;
         }
@@ -9669,7 +9666,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         arr->length += length;
     }
 
-    static void render_html_callback(const MD_CHAR* the_data, MD_SIZE length, void* user_data)
+    static void render_html_callback(const SSS_CHAR* the_data, SSS_SIZE length, void* user_data)
     {
         // printf("HTML %.*s\n", (int) length, the_data);
 
@@ -9677,7 +9674,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
         sss__dynamic_string_append(result_buffer, the_data, length);
     }
 
-    MD_CHAR* sss_render_file(StaticSiteInstance* instance, MD_CHAR* markdown_data, size_t length)
+    SSS_CHAR* sss_render_file(StaticSiteInstance* instance, SSS_CHAR* markdown_data, size_t length)
     {
         struct SSS__DynamicString result_buffer = {0};
         sss__dynamic_string_init(&result_buffer);
@@ -9699,3 +9696,7 @@ int sss_write_to_file(const MD_CHAR* filename, MD_CHAR* cstr);
 
 #endif
 
+
+#ifdef __cplusplus
+    }  /* extern "C" { */
+#endif
