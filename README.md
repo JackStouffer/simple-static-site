@@ -4,6 +4,8 @@
 
 A simple, cross platform, code driven, static site generator for markdown based content.
 
+Most of this code wasn't written by me, it's mostly base off of MD4C: http://github.com/mity/md4c
+
 ## Project Goals
 
 I need something that is
@@ -38,5 +40,49 @@ In one, and only one, file do
 
 ## Usage
 
+`main.c`
 
+```c
+#define STATIC_SITE_IMPLEMENTATION
+#include "../simple-static-site.h"
+
+
+int main()
+{
+    char* title = "Home";
+    char* base_template = sss_read_file("templates/base.html", NULL);
+    char* markdown_data = sss_read_file("content/home.md", NULL);
+
+    char* html = sss_render_file(
+        base_template,
+        title,
+        markdown_data
+    );
+    sss_write_to_file("build/home.html", html);
+}
+```
+
+`base.html`
+
+```html
+<!doctype html>
+<html>
+    <head>
+        <title>{{ title }}</title>
+    </head>
+    <body>
+        {{ markdown }}
+    </body>
+</html>
+```
+
+`base.md`
+
+```markdown
+# This Is A Body Header
+
+This is body content
+```
+
+There's a larger example in the `example` folder.
 

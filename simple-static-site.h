@@ -29,34 +29,33 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef STATIC_SITE_H
-#define STATIC_SITE_H
+#if defined(__AVX2__)
+    #include <x86intrin.h>
+#endif
 
 #ifdef __cplusplus
     extern "C" {
 #endif
-   
-typedef char SSS_CHAR;
-typedef unsigned SSS_SIZE;
-typedef unsigned SSS_OFFSET;
 
-typedef struct StaticSiteInstance
-{
-    int _x;
-} StaticSiteInstance;
+#ifndef STATIC_SITE_H
 
-/// TODO: docs
-StaticSiteInstance* sss_instance();
-/// TODO: docs
-void sss_add_template(StaticSiteInstance* instance, SSS_CHAR* template_data, size_t length, SSS_CHAR* template_name);
-/// TODO: docs
-SSS_CHAR* sss_render_file(StaticSiteInstance* instance, SSS_CHAR* markdown_data, size_t length);
+    #define STATIC_SITE_H
+    
+    typedef char SSS_CHAR;
+    typedef unsigned SSS_SIZE;
+    typedef unsigned SSS_OFFSET;
 
-/// TODO: docs
-SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size);
-/// TODO: docs
-int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
+    /// TODO: docs
+    SSS_CHAR* sss_render_file(
+        SSS_CHAR* template,
+        SSS_CHAR* title,
+        SSS_CHAR* markdown
+    );
+
+    /// TODO: docs
+    SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size);
+    /// TODO: docs
+    int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
 
 #endif  /* STATIC_SITE_H */
 
@@ -9523,6 +9522,18 @@ int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
         return md_parse(input, input_size, &parser, (void*) &render);
     }
 
+    static SSS_SIZE next_power_of_two(SSS_SIZE x)
+    {
+        // From bit twiddling hacks
+        x--;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        x++;
+        return x;
+    }
 
     /**
      * Copyright 2024 Jack Stouffer
@@ -9545,6 +9556,34 @@ int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
      * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
      * IN THE SOFTWARE.
      */
+
+    struct SSS__DynamicString
+    {
+        SSS_CHAR* data;
+        SSS_SIZE length;
+        SSS_SIZE capacity;
+    };
+
+    static void sss__dynamic_string_init(struct SSS__DynamicString* arr)
+    {
+        arr->data = malloc(sizeof(SSS_CHAR) * 1024);
+        arr->length = 0;
+        arr->capacity = 1024;
+    }
+
+    static void sss__dynamic_string_append(struct SSS__DynamicString* arr, const SSS_CHAR* str, SSS_SIZE length)
+    {
+        SSS_SIZE required_capacity = arr->length + length;
+        if (arr->capacity < required_capacity)
+        {
+            SSS_SIZE new_capacity = next_power_of_two(required_capacity);
+            arr->data = realloc(arr->data, new_capacity);
+            arr->capacity = new_capacity;
+        }
+
+        memcpy(arr->data + arr->length, str, length);
+        arr->length += length;
+    }
 
     SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size)
     {
@@ -9594,21 +9633,24 @@ int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
 
         // Open the file for writing in binary mode
         FILE *file = fopen(filename, "wb");
-        if (!file) {
+        if (!file)
+        {
             perror("Failed to open file");
             return -1;
         }
 
         // Write the buffer to the file
         size_t written = fwrite(cstr, 1, length, file);
-        if (written != length) {
+        if (written != length)
+        {
             perror("Failed to write the entire buffer to the file");
             fclose(file);
             return -1;
         }
 
         // Close the file
-        if (fclose(file) != 0) {
+        if (fclose(file) != 0)
+        {
             perror("Failed to close the file");
             return -1;
         }
@@ -9616,54 +9658,39 @@ int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
         return 0; // Success
     }
 
-    StaticSiteInstance* sss_instance()
+    static SSS_CHAR* replace_first_occurrence(SSS_CHAR* base, SSS_CHAR* replace_this, SSS_CHAR* with_this)
     {
-        return calloc(1, sizeof(StaticSiteInstance));
+        size_t base_length = strlen(base);
+        size_t replace_length = strlen(replace_this);
+        size_t with_this_length = strlen(with_this);
+        SSS_CHAR* buffer = malloc(
+            sizeof(SSS_CHAR) * (base_length + MAX(replace_length, with_this_length))
+        );
+
+        char *pos = strstr(base, replace_this);
+        if (!pos)
+            return base;
+
+        // Copy the first part of the base string
+        size_t start = pos - base;
+        memcpy(buffer, base, start);
+
+        // Copy with_this into the position of replace_this
+        memcpy(base + start, with_this, with_this_length);
+
+        memcpy(base + start + with_this_length, base + start + replace_length, base_length - start - replace_length);
+        return buffer;
     }
-
-    void sss_add_template(StaticSiteInstance* instance, SSS_CHAR* template_data, size_t length, SSS_CHAR* template_name)
+    
+    SSS_CHAR* string_duplicate(SSS_CHAR* src)
     {
-        return;
-    }
+        if (src == NULL) return NULL;
 
-    struct SSS__DynamicString
-    {
-        SSS_CHAR* data;
-        SSS_SIZE length;
-        SSS_SIZE capacity;
-    };
+        SSS_CHAR* dup = malloc(sizeof(SSS_CHAR) * (strlen(src) + 1));
+        if (dup == NULL) return NULL;
 
-    static void sss__dynamic_string_init(struct SSS__DynamicString* arr)
-    {
-        arr->data = malloc(sizeof(SSS_CHAR) * 1024);
-        arr->length = 0;
-        arr->capacity = 1024;
-    }
-
-    static SSS_SIZE next_power_of_two(SSS_SIZE x)
-    {
-        x--;
-        x |= x >> 1;
-        x |= x >> 2;
-        x |= x >> 4;
-        x |= x >> 8;
-        x |= x >> 16;
-        x++;
-        return x;
-    }
-
-    static void sss__dynamic_string_append(struct SSS__DynamicString* arr, const SSS_CHAR* str, SSS_SIZE length)
-    {
-        SSS_SIZE required_capacity = arr->length + length;
-        if (arr->capacity < required_capacity)
-        {
-            SSS_SIZE new_capacity = next_power_of_two(required_capacity);
-            arr->data = realloc(arr->data, new_capacity);
-            arr->capacity = new_capacity;
-        }
-
-        memcpy(arr->data + arr->length, str, length);
-        arr->length += length;
+        strcpy(dup, src);
+        return dup;
     }
 
     static void render_html_callback(const SSS_CHAR* the_data, SSS_SIZE length, void* user_data)
@@ -9674,14 +9701,23 @@ int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
         sss__dynamic_string_append(result_buffer, the_data, length);
     }
 
-    SSS_CHAR* sss_render_file(StaticSiteInstance* instance, SSS_CHAR* markdown_data, size_t length)
+    SSS_CHAR* sss_render_file(
+        SSS_CHAR* template,
+        SSS_CHAR* title,
+        SSS_CHAR* markdown
+    )
     {
         struct SSS__DynamicString result_buffer = {0};
         sss__dynamic_string_init(&result_buffer);
 
+        SSS_CHAR* template_copy = string_duplicate(template);
+        char* replaced = replace_first_occurrence(template_copy, "{{ title }}", "TESTING TITLE LONG");
+ 
+        printf("GGGGGG %s\n", replaced);
+    
         md_html(
-            (char*) markdown_data,
-            length,
+            (char*) markdown,
+            strlen(markdown),
             render_html_callback,
             &result_buffer,
             MD_DIALECT_GITHUB,

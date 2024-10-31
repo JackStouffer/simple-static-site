@@ -6,15 +6,20 @@
 
 int main()
 {
-    StaticSiteInstance* instance = sss_instance();
-    sss_add_template(instance, "templates/base.html", 20, "base");
-    sss_add_template(instance, "templates/post.html", 20, "post");
+    char* base_template = sss_read_file("templates/base.html", NULL);
+
+    // size_t post_template_length = 0;
+    // char* post_template = sss_read_file("templates/post.html", &post_template_length);
 
     {
-        size_t mark_down_size = 0;
-        char* mark_down_data = sss_read_file("content/home.md", &mark_down_size);
+        char* title = "Home";
+        char* mark_down_data = sss_read_file("content/home.md", NULL);
 
-        char* html = sss_render_file(instance, mark_down_data, mark_down_size);
+        char* html = sss_render_file(
+            base_template,
+            title,
+            mark_down_data
+        );
         printf("HTML %s\n", html);
         sss_write_to_file("build/home.html", html);
     }
