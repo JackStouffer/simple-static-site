@@ -24,14 +24,35 @@
  * IN THE SOFTWARE.
  */
 
-#include <limits.h>
+#include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(__AVX2__)
-    #include <x86intrin.h>
+
+#ifdef _WIN32
+
+    #include <windows.h>
+    #define MKDIR(dir) _mkdir(dir)
+    #define PATH_SEPARATOR '\\'
+
+#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+
+    #include <dirent.h>
+    #include <sys/stat.h>
+    #include <sys/types.h>
+
+    #define MKDIR(dir) mkdir(dir, 0755)
+    #define PATH_SEPARATOR '/'
+
+#else
+
+    _Static_assert("Host platform must be either Windows, macOS, Linux. It may work on BSD-like systems.");
+
 #endif
+
+#include <limits.h>
 
 #ifdef __cplusplus
     extern "C" {
@@ -42,20 +63,22 @@
     #define STATIC_SITE_H
     
     typedef char SSS_CHAR;
-    typedef unsigned SSS_SIZE;
+    typedef size_t SSS_SIZE;
     typedef unsigned SSS_OFFSET;
 
     /// TODO: docs
     SSS_CHAR* sss_render_file(
-        SSS_CHAR* template,
-        SSS_CHAR* title,
-        SSS_CHAR* markdown
+        const SSS_CHAR* template,
+        const SSS_CHAR* title,
+        const SSS_CHAR* markdown
     );
 
     /// TODO: docs
-    SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size);
+    SSS_CHAR* sss_read_file(const SSS_CHAR* filename, SSS_SIZE* out_size);
     /// TODO: docs
     int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
+    /// TODO: docs
+    const SSS_CHAR** sss_get_files_in_folder(const SSS_CHAR* path, SSS_SIZE* out_size);
 
 #endif  /* STATIC_SITE_H */
 
@@ -9480,7 +9503,7 @@
     * Returns -1 on error (if md_parse() fails.)
     * Returns 0 on success.
     */
-    int md_html(const SSS_CHAR* input, SSS_SIZE input_size,
+    static int md_html(const SSS_CHAR* input, SSS_SIZE input_size,
             void (*process_output)(const SSS_CHAR*, SSS_SIZE, void*),
             void* userdata, unsigned parser_flags, unsigned renderer_flags)
     {
@@ -9585,12 +9608,55 @@
         arr->length += length;
     }
 
+    struct SSS__ArrayOfStrings
+    {
+        const SSS_CHAR** data;
+        SSS_SIZE length;
+        SSS_SIZE capacity;
+    };
+
+    static void sss__array_of_strings_init(struct SSS__ArrayOfStrings* arr)
+    {
+        arr->data = malloc(sizeof(SSS_CHAR) * 8);
+        arr->length = 0;
+        arr->capacity = 8;
+    }
+
+    static void sss__array_of_strings_append(
+        struct SSS__ArrayOfStrings* arr,
+        const SSS_CHAR* str
+    )
+    {
+        SSS_SIZE required_capacity = arr->length + 1;
+        if (arr->capacity < required_capacity)
+        {
+            SSS_SIZE new_capacity = next_power_of_two(required_capacity);
+            arr->data = realloc(arr->data, new_capacity);
+            arr->capacity = new_capacity;
+        }
+
+        arr->data[arr->length] = str;
+        ++arr->length;
+    }
+
+    // Beacuse strdup isn't standard
+    static SSS_CHAR* string_duplicate(const SSS_CHAR* src)
+    {
+        if (src == NULL) return NULL;
+
+        SSS_CHAR* dup = malloc(sizeof(SSS_CHAR) * (strlen(src) + 1));
+        assert(dup != NULL);
+
+        strcpy(dup, src);
+        return dup;
+    }
+
     SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size)
     {
         FILE* file = fopen(filename, "rb");
         if (!file)
         {
-            perror("Failed to open file");
+            perror("Failed to open file for reading");
             return NULL;
         }
 
@@ -9627,15 +9693,78 @@
         return buffer;
     }
 
+    static int create_directories_in_path(const SSS_CHAR* path)
+    {
+        SSS_CHAR* temp_path = string_duplicate(path);
+        assert(temp_path != NULL);
+
+        // Find the last separator to determine if we need to process directories
+        SSS_CHAR* last_sep = strrchr(temp_path, PATH_SEPARATOR);
+        if (!last_sep)
+        {
+            return 0;
+        }
+
+        // Null terminate at last separator to get directory path
+        *last_sep = '\0';
+        
+        // Make sure the dir seperators are platform correct
+        for (SSS_CHAR* p = temp_path; *p; p++)
+        {
+            if (*p == '/' || *p == '\\')
+            {
+                *p = PATH_SEPARATOR;
+            }
+        }
+
+        // Create each directory in the path
+        SSS_CHAR* p = temp_path;
+        while (*p)
+        {
+            if (*p == PATH_SEPARATOR)
+            {
+                *p = '\0';
+                
+                if (strlen(temp_path) > 0)
+                {
+                    if (MKDIR(temp_path) != 0 && errno != EEXIST)
+                    {
+                        return -1;
+                    }
+                }
+
+                *p = PATH_SEPARATOR;  // Restore separator
+            }
+
+            p++;
+        }
+
+        if (strlen(temp_path) > 0)
+        {
+            if (MKDIR(temp_path) != 0 && errno != EEXIST)
+            {
+                return -1;
+            }
+        }
+
+        return 0;
+}
+
     int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr)
     {
+        if (create_directories_in_path(filename) != 0)
+        {
+            perror("Failed to create directories in the given path before file writing.");
+            return -1;
+        }
+
         SSS_SIZE length = strlen(cstr);
 
         // Open the file for writing in binary mode
         FILE *file = fopen(filename, "wb");
         if (!file)
         {
-            perror("Failed to open file");
+            perror("Failed to open file for writing");
             return -1;
         }
 
@@ -9658,63 +9787,150 @@
         return 0; // Success
     }
 
-    static SSS_CHAR* replace_first_occurrence(SSS_CHAR* base, SSS_CHAR* replace_this, SSS_CHAR* with_this)
+    const SSS_CHAR** sss_get_files_in_folder(const SSS_CHAR* path, SSS_SIZE* out_size)
+    {
+        struct SSS__ArrayOfStrings result;
+        sss__array_of_strings_init(&result);
+
+        #ifdef _WIN32
+            #ifndef MAX_PATH
+                const int MAX_PATH = 1024;
+            #endif
+
+            WIN32_FIND_DATA find_data;
+            HANDLE handle;
+            SSS_CHAR search_path[MAX_PATH];
+
+            // Prepare the search path
+            snprintf(search_path, sizeof(search_path), "%s\\*", path);
+            
+            handle = FindFirstFile(search_path, &find_data);
+            if (handle == INVALID_HANDLE_VALUE)
+            {
+                return NULL;
+            }
+
+            do {
+                // Skip "." and ".." directories
+                if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0)
+                {
+                    continue;
+                }
+
+                // Skip directories
+                if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                {
+                    sss__array_of_strings_append(&result, string_duplicate(find_data.cFileName));
+                    *out_size += 1;
+                }
+            } while (FindNextFile(handle, &find_data));
+
+            FindClose(handle);
+
+        #else
+            #ifndef PATH_MAX
+                const int PATH_MAX = 1024;
+            #endif
+
+            DIR* dir;
+            struct dirent* entry;
+            struct stat statbuf;
+            SSS_CHAR full_path[PATH_MAX];
+
+            dir = opendir(path);
+            if (dir == NULL)
+            {
+                return NULL;
+            }
+
+            while ((entry = readdir(dir)) != NULL)
+            {
+                // Skip "." and ".." directories
+                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                {
+                    continue;
+                }
+
+                // Construct full path for stat
+                snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+                
+                if (stat(full_path, &statbuf) != -1)
+                {
+                    if (S_ISREG(statbuf.st_mode))
+                    {
+                        sss__array_of_strings_append(&result, string_duplicate(entry->d_name));
+                        *out_size += 1;
+                    }
+                }
+            }
+
+            closedir(dir);
+        #endif
+
+        return result.data;
+    }
+
+    static SSS_CHAR* replace_first_occurrence(
+        const SSS_CHAR* base,
+        const SSS_CHAR* replace_this,
+        const SSS_CHAR* with_this
+    )
     {
         size_t base_length = strlen(base);
         size_t replace_length = strlen(replace_this);
-        size_t with_this_length = strlen(with_this);
-        SSS_CHAR* buffer = malloc(
-            sizeof(SSS_CHAR) * (base_length + MAX(replace_length, with_this_length))
+        size_t with_length = strlen(with_this);
+        
+        SSS_CHAR *pos = strstr(base, replace_this);
+        if (!pos)
+        {
+            SSS_CHAR* buffer = malloc(sizeof(SSS_CHAR) * (base_length + 1));
+            assert(buffer != NULL);
+            memcpy(buffer, base, base_length);
+            return buffer;
+        }
+
+        size_t new_length = base_length - replace_length + with_length;
+        
+        SSS_CHAR* buffer = malloc(sizeof(SSS_CHAR) * (new_length + 1));
+        assert(buffer != NULL);
+
+        size_t start = pos - base;
+
+        memcpy(buffer, base, start);        
+        memcpy(buffer + start, with_this, with_length);
+        memcpy(
+            buffer + start + with_length, 
+            pos + replace_length, 
+            base_length - start - replace_length
         );
 
-        char *pos = strstr(base, replace_this);
-        if (!pos)
-            return base;
-
-        // Copy the first part of the base string
-        size_t start = pos - base;
-        memcpy(buffer, base, start);
-
-        // Copy with_this into the position of replace_this
-        memcpy(base + start, with_this, with_this_length);
-
-        memcpy(base + start + with_this_length, base + start + replace_length, base_length - start - replace_length);
+        buffer[new_length] = '\0';
+        
         return buffer;
-    }
-    
-    SSS_CHAR* string_duplicate(SSS_CHAR* src)
-    {
-        if (src == NULL) return NULL;
-
-        SSS_CHAR* dup = malloc(sizeof(SSS_CHAR) * (strlen(src) + 1));
-        if (dup == NULL) return NULL;
-
-        strcpy(dup, src);
-        return dup;
     }
 
     static void render_html_callback(const SSS_CHAR* the_data, SSS_SIZE length, void* user_data)
     {
-        // printf("HTML %.*s\n", (int) length, the_data);
-
         struct SSS__DynamicString* result_buffer = user_data;
         sss__dynamic_string_append(result_buffer, the_data, length);
     }
 
     SSS_CHAR* sss_render_file(
-        SSS_CHAR* template,
-        SSS_CHAR* title,
-        SSS_CHAR* markdown
+        const SSS_CHAR* template,
+        const SSS_CHAR* title,
+        const SSS_CHAR* markdown
     )
     {
         struct SSS__DynamicString result_buffer = {0};
         sss__dynamic_string_init(&result_buffer);
 
         SSS_CHAR* template_copy = string_duplicate(template);
-        char* replaced = replace_first_occurrence(template_copy, "{{ title }}", "TESTING TITLE LONG");
- 
-        printf("GGGGGG %s\n", replaced);
-    
+        SSS_CHAR* replaced_title = replace_first_occurrence(
+            template_copy, 
+            "{{ title }}",
+            title
+        );
+
         md_html(
             (char*) markdown,
             strlen(markdown),
@@ -9726,7 +9942,13 @@
 
         sss__dynamic_string_append(&result_buffer, "\0", 1);
 
-        return result_buffer.data;
+        SSS_CHAR* replaced_body = replace_first_occurrence(
+            replaced_title,
+            "{{ markdown }}",
+            result_buffer.data
+        );
+
+        return replaced_body;
     }
 
 

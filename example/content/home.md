@@ -4,9 +4,16 @@ This is the home page data.
 
 Example __bold text__.
 
+Example *italic text*.
+
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut lectus lacus, pretium ac vestibulum id, ultricies vel neque. Praesent lacus lorem, ultricies et erat id, vulputate egestas felis. Ut in risus varius, hendrerit dui eget, tincidunt enim. Duis porttitor laoreet nulla in porttitor. Mauris ac commodo tortor, non rutrum diam. Vivamus finibus, dolor non sollicitudin porttitor, metus ipsum volutpat odio, ut sodales arcu dui ut nibh. Duis eu risus pretium, ullamcorper turpis in, consectetur magna. Nam fermentum facilisis enim, et rhoncus ipsum suscipit vitae. Vivamus a massa at lorem aliquam commodo. Cras condimentum at magna non pulvinar.
 
 ## Subheading
+
+1. First item
+2. Second item
+3. Third item
+4. Fourth item
 
 Sed ut dictum nisi. Duis mattis, enim et vestibulum dapibus, nisi erat mollis ante, a posuere erat nisl a mauris. Proin nec felis a urna vulputate euismod. Curabitur accumsan est quis lacinia lacinia. Nam tempus libero eu nunc auctor, id ultrices massa viverra. Cras interdum est odio, eget posuere urna aliquam in. Quisque viverra purus ac nunc tincidunt tempus. Suspendisse quis mollis turpis. Proin venenatis consectetur massa, vitae molestie nisl laoreet eu.
 
