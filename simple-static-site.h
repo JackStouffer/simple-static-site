@@ -1,28 +1,6 @@
+// There are different licenses in this file. See the sections for details.
 
-/*
- * MD4C: Markdown parser for C
- * (http://github.com/mity/md4c)
- *
- * Copyright (c) 2016-2024 Martin Mitáš
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- */
+// Version 1.0.0
 
 #include <assert.h>
 #include <errno.h>
@@ -62,22 +40,69 @@
 
     #define STATIC_SITE_H
     
+    /**
+     * Type alias to make it easier to refactor this if you need to
+     * to something like `unsigned char` or `unsigned short` for 
+     * UTF-16.
+     */
     typedef char SSS_CHAR;
-    typedef size_t SSS_SIZE;
+
+    /**
+     * Type-alias for the size of arrays. 
+     */
+    typedef unsigned SSS_SIZE;
+
+    /**
+     * Type-alias for the offset into arrays. 
+     */
     typedef unsigned SSS_OFFSET;
 
-    /// TODO: docs
+    /**
+     * Create the combination of the base template with the `{{ title }}`
+     * and `{{ markdown }}` replaced with the given title and the rendered
+     * markdown, respectively.
+     * 
+     * @param template NULL terminated string of the template HTML
+     * @param title NULL terminated string of what to have in place of `{{ title }}` in the template
+     * @param markdown NULL terminated string of the markdown to render and place in the `{{ markdown }}` string in the template
+     * @returns A NULL terminated string of the final HTML
+     */
     SSS_CHAR* sss_render_file(
         const SSS_CHAR* template,
         const SSS_CHAR* title,
         const SSS_CHAR* markdown
     );
 
-    /// TODO: docs
+    /**
+     * Reads the text data from the given relative or absolute file path
+     * and returns it as a NULL terminated string. Does not work with binary
+     * files, as the data is read in `signed`.
+     * 
+     * @param filename the file to read
+     * @param out_size the number of `SSS_CHAR`s read from the file
+     * @returns The file data as a NULL terminated string
+     */
     SSS_CHAR* sss_read_file(const SSS_CHAR* filename, SSS_SIZE* out_size);
-    /// TODO: docs
-    int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr);
-    /// TODO: docs
+
+    /**
+     * Writes the given text data to the given relative or absolute file path.
+     * If any files in the given path do not exist, this function will create
+     * those intermediate directories.
+     *
+     * @param filename the file path and name to write to
+     * @param out_size the number of `SSS_CHAR`s read from the file
+     * @returns The file data as a NULL terminated string
+     */
+    int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* file_data);
+
+    /**
+     * Gets all of the normal files in a directory as an array of NULL terminated
+     * strings. This function is not recursive.
+     *
+     * @param path the directory path to read
+     * @param out_size the number of strings in the returned array
+     * @returns An array of strings that represent file paths
+     */
     const SSS_CHAR** sss_get_files_in_folder(const SSS_CHAR* path, SSS_SIZE* out_size);
 
 #endif  /* STATIC_SITE_H */
@@ -9651,7 +9676,7 @@
         return dup;
     }
 
-    SSS_CHAR* sss_read_file(const SSS_CHAR* filename, size_t* out_size)
+    SSS_CHAR* sss_read_file(const SSS_CHAR* filename, SSS_SIZE* out_size)
     {
         FILE* file = fopen(filename, "rb");
         if (!file)
@@ -9684,7 +9709,7 @@
 
         buffer[file_size] = '\0';
         fclose(file);
-
+ 
         if (out_size != NULL)
         {
             *out_size = file_size;
@@ -9748,41 +9773,31 @@
         }
 
         return 0;
-}
+    }
 
-    int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* cstr)
+    int sss_write_to_file(const SSS_CHAR* filename, SSS_CHAR* file_data)
     {
-        if (create_directories_in_path(filename) != 0)
-        {
-            perror("Failed to create directories in the given path before file writing.");
-            return -1;
-        }
+        int create_directories_ret = create_directories_in_path(filename);
+        // Failed to create directories in the given path before file writing.
+        assert(create_directories_ret != -1);
 
-        SSS_SIZE length = strlen(cstr);
+        SSS_SIZE length = strlen(file_data);
 
-        // Open the file for writing in binary mode
         FILE *file = fopen(filename, "wb");
-        if (!file)
-        {
-            perror("Failed to open file for writing");
-            return -1;
-        }
+        assert(file != NULL);
 
         // Write the buffer to the file
-        size_t written = fwrite(cstr, 1, length, file);
+        size_t written = fwrite(file_data, 1, length, file);
         if (written != length)
         {
             perror("Failed to write the entire buffer to the file");
             fclose(file);
-            return -1;
+            assert(0);
         }
 
         // Close the file
-        if (fclose(file) != 0)
-        {
-            perror("Failed to close the file");
-            return -1;
-        }
+        int fclose_ret = fclose(file);
+        assert(fclose_ret == 0);
 
         return 0; // Success
     }
@@ -9876,9 +9891,9 @@
         const SSS_CHAR* with_this
     )
     {
-        size_t base_length = strlen(base);
-        size_t replace_length = strlen(replace_this);
-        size_t with_length = strlen(with_this);
+        SSS_SIZE base_length = (SSS_SIZE) strlen(base);
+        SSS_SIZE replace_length = (SSS_SIZE) strlen(replace_this);
+        SSS_SIZE with_length = (SSS_SIZE) strlen(with_this);
         
         SSS_CHAR *pos = strstr(base, replace_this);
         if (!pos)
@@ -9889,12 +9904,12 @@
             return buffer;
         }
 
-        size_t new_length = base_length - replace_length + with_length;
+        SSS_SIZE new_length = base_length - replace_length + with_length;
         
         SSS_CHAR* buffer = malloc(sizeof(SSS_CHAR) * (new_length + 1));
         assert(buffer != NULL);
 
-        size_t start = pos - base;
+        SSS_SIZE start = pos - base;
 
         memcpy(buffer, base, start);        
         memcpy(buffer + start, with_this, with_length);

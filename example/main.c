@@ -23,7 +23,7 @@ int main()
 
     // Loop through all of the posts and render their HTML
     {
-        size_t number_of_posts = 0;
+        unsigned number_of_posts = 0;
         const char** posts = sss_get_files_in_folder("content/posts", &number_of_posts);
 
         char content_path_buffer[256];
