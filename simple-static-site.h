@@ -1,5 +1,5 @@
 /**
- * Simple Static Site, Version 1.0.0
+ * Simple Static Site, Version 1.0.1
  * 
  * See repo for more details:
  * 
@@ -18,7 +18,17 @@
 
 #ifdef _WIN32
 
-    #include <windows.h>
+    #pragma warning(disable:4996)
+    #define _CRT_SECURE_NO_DEPRECATE
+    #define _CRT_SECURE_NO_WARNINGS
+
+    // Windows' own headers produce warnings with their own complier.
+    // Just unbelievable levels of incompetence.
+    #pragma warning(push, 0)
+        #include <windows.h>
+        #include <direct.h>
+    #pragma warning(pop)
+
     #define MKDIR(dir) _mkdir(dir)
     #define PATH_SEPARATOR '\\'
 
@@ -9788,7 +9798,7 @@
         // Failed to create directories in the given path before file writing.
         assert(create_directories_ret != -1);
 
-        SSS_SIZE length = strlen(file_data);
+        SSS_SIZE length = (SSS_SIZE) strlen(file_data);
 
         FILE *file = fopen(filename, "wb");
         assert(file != NULL);
@@ -9916,7 +9926,7 @@
         SSS_CHAR* buffer = malloc(sizeof(SSS_CHAR) * (new_length + 1));
         assert(buffer != NULL);
 
-        SSS_SIZE start = pos - base;
+        SSS_SIZE start = (SSS_SIZE) (pos - base);
 
         memcpy(buffer, base, start);        
         memcpy(buffer + start, with_this, with_length);
@@ -9955,7 +9965,7 @@
 
         md_html(
             (char*) markdown,
-            strlen(markdown),
+            (SSS_SIZE) strlen(markdown),
             render_html_callback,
             &result_buffer,
             MD_DIALECT_GITHUB,
