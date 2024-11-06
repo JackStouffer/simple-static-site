@@ -1,6 +1,13 @@
-// There are different licenses in this file. See the sections for details.
+/**
+ * Simple Static Site, Version 1.0.0
+ * 
+ * See repo for more details:
+ * 
+ * https://github.com/JackStouffer/simple-static-site 
+ */
 
-// Version 1.0.0
+
+// There are different licenses in this file. See the sections for details.
 
 #include <assert.h>
 #include <errno.h>
