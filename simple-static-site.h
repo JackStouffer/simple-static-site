@@ -1,5 +1,5 @@
 /**
- * Simple Static Site, Version 1.0.1
+ * Simple Static Site, Version 1.0.2
  * 
  * See repo for more details:
  * 
@@ -9902,7 +9902,7 @@
         return result.data;
     }
 
-    static SSS_CHAR* replace_first_occurrence(
+    static SSS_CHAR* replace_all_occurrences(
         const SSS_CHAR* base,
         const SSS_CHAR* replace_this,
         const SSS_CHAR* with_this
@@ -9912,32 +9912,43 @@
         SSS_SIZE replace_length = (SSS_SIZE) strlen(replace_this);
         SSS_SIZE with_length = (SSS_SIZE) strlen(with_this);
         
-        SSS_CHAR *pos = strstr(base, replace_this);
-        if (!pos)
+        size_t occurrences = 0;
+        const SSS_CHAR* curr = base;
+        while ((curr = strstr(curr, replace_this)) != NULL)
         {
-            SSS_CHAR* buffer = malloc(sizeof(SSS_CHAR) * (base_length + 1));
-            assert(buffer != NULL);
-            memcpy(buffer, base, base_length);
-            return buffer;
+            occurrences++;
+            curr += replace_length;
         }
 
-        SSS_SIZE new_length = base_length - replace_length + with_length;
-        
-        SSS_CHAR* buffer = malloc(sizeof(SSS_CHAR) * (new_length + 1));
-        assert(buffer != NULL);
+        SSS_CHAR* buffer;
+        if (occurrences == 0)
+        {
+            buffer = malloc(sizeof(SSS_CHAR) * (base_length + 1));
+            assert(buffer != NULL);
+            memcpy(buffer, base, base_length);
+            buffer[base_length] = '\0';
+            return buffer;
+        }
+        else
+        {
+            SSS_SIZE new_length = base_length + occurrences * (with_length - replace_length);
+            buffer = malloc(sizeof(SSS_CHAR) * (new_length + 1));
+            assert(buffer != NULL);
 
-        SSS_SIZE start = (SSS_SIZE) (pos - base);
+            SSS_CHAR* curr_pos = buffer;
+            const SSS_CHAR* curr_base = base;
+            while ((curr = strstr(curr_base, replace_this)) != NULL)
+            {
+                memcpy(curr_pos, curr_base, curr - curr_base);
+                curr_pos += curr - curr_base;
+                memcpy(curr_pos, with_this, with_length);
+                curr_pos += with_length;
+                curr_base = curr + replace_length;
+            }
+            
+            strcpy(curr_pos, curr_base);
+        }
 
-        memcpy(buffer, base, start);        
-        memcpy(buffer + start, with_this, with_length);
-        memcpy(
-            buffer + start + with_length, 
-            pos + replace_length, 
-            base_length - start - replace_length
-        );
-
-        buffer[new_length] = '\0';
-        
         return buffer;
     }
 
@@ -9957,7 +9968,7 @@
         sss__dynamic_string_init(&result_buffer);
 
         SSS_CHAR* template_copy = string_duplicate(template);
-        SSS_CHAR* replaced_title = replace_first_occurrence(
+        SSS_CHAR* replaced_title = replace_all_occurrences(
             template_copy, 
             "{{ title }}",
             title
@@ -9974,7 +9985,7 @@
 
         sss__dynamic_string_append(&result_buffer, "\0", 1);
 
-        SSS_CHAR* replaced_body = replace_first_occurrence(
+        SSS_CHAR* replaced_body = replace_all_occurrences(
             replaced_title,
             "{{ markdown }}",
             result_buffer.data
