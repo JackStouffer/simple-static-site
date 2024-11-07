@@ -9931,7 +9931,7 @@
         }
         else
         {
-            SSS_SIZE new_length = base_length + occurrences * (with_length - replace_length);
+            SSS_SIZE new_length = (SSS_SIZE) (base_length + occurrences * (with_length - replace_length));
             buffer = malloc(sizeof(SSS_CHAR) * (new_length + 1));
             assert(buffer != NULL);
 
